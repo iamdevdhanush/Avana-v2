@@ -1,0 +1,50 @@
+import uuid
+from datetime import datetime
+from sqlalchemy import String, DateTime, Boolean, Enum as SAEnum, Text
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.database import Base
+import enum
+
+
+class UserRole(str, enum.Enum):
+    USER = "user"
+    ADMIN = "admin"
+    MODERATOR = "moderator"
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=True)
+    avatar_url: Mapped[str] = mapped_column(String(512), nullable=True)
+    role: Mapped[UserRole] = mapped_column(SAEnum(UserRole), default=UserRole.USER, nullable=False)
+    phone: Mapped[str] = mapped_column(String(20), nullable=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    supabase_uid: Mapped[str] = mapped_column(String(255), unique=True, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_login: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    emergency_contacts = relationship("EmergencyContact", back_populates="user", cascade="all, delete-orphan")
+    safety_reports = relationship("SafetyReport", back_populates="user")
+    sos_events = relationship("SOSEvent", back_populates="user")
+    community_posts = relationship("CommunityPost", back_populates="user")
+    comments = relationship("Comment", back_populates="user")
+
+
+class EmergencyContact(Base):
+    __tablename__ = "emergency_contacts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    relationship: Mapped[str] = mapped_column(String(100), nullable=True)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    user = relationship("User", back_populates="emergency_contacts")
