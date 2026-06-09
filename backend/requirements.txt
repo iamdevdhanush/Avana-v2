@@ -22,4 +22,5 @@ langchain-community==0.3.0
 numpy==1.26.0
 pytest==8.3.0
 pytest-asyncio==0.24.0
-shapely==2.0.0
+shapely>=2.0.6,<3.0.0
+setuptools>=75.0.0
