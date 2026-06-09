@@ -1,0 +1,199 @@
+# Avana V2 — Render Blueprint
+# One-click deploy: https://render.com/deploy?blueprint-url=...
+#
+# Requires: GEMINI_API_KEY set as secret env var
+# Optional: OPENAI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY
+
+services:
+  # ── FastAPI Backend ────────────────────────────────────────────────────────
+  - type: web
+    name: avana-v2-backend
+    runtime: python
+    region: singapore
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: APP_NAME
+        value: Avana V2 - Karnataka Safety Intelligence
+      - key: VERSION
+        value: 2.0.0
+      - key: DEBUG
+        value: false
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: avana-v2-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: avana-v2-db
+          property: password
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: avana-v2-db
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: avana-v2-db
+          property: port
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: avana-v2-db
+          property: database
+      - key: REDIS_URL
+        fromService:
+          name: avana-v2-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: avana-v2-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: avana-v2-redis
+          type: redis
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: JWT_EXPIRATION_HOURS
+        value: "24"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: RATE_LIMIT_MAX
+        value: "100"
+      - key: RATE_LIMIT_WINDOW
+        value: "60"
+      - key: CORS_ORIGINS
+        value: https://avana-v2-frontend.onrender.com,http://localhost:5173
+      - key: NEWS_SCRAPE_INTERVAL_MINUTES
+        value: "360"
+      - key: AGENT_RUN_INTERVAL_MINUTES
+        value: "60"
+      - key: KARNATAKA_BOUNDS
+        value: 11.5,18.0,74.0,78.5
+
+  # ── Celery Worker (AI Agent Runner) ────────────────────────────────────────
+  - type: worker
+    name: avana-v2-celery-worker
+    runtime: python
+    region: singapore
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
+    envVars:
+      - key: APP_NAME
+        value: Avana V2 - Celery Worker
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: avana-v2-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: avana-v2-db
+          property: password
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: avana-v2-db
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: avana-v2-db
+          property: port
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: avana-v2-db
+          property: database
+      - key: REDIS_URL
+        fromService:
+          name: avana-v2-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: avana-v2-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: avana-v2-redis
+          type: redis
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: NEWS_SCRAPE_INTERVAL_MINUTES
+        value: "360"
+      - key: AGENT_RUN_INTERVAL_MINUTES
+        value: "60"
+      - key: KARNATAKA_BOUNDS
+        value: 11.5,18.0,74.0,78.5
+
+  # ── Celery Beat Scheduler ──────────────────────────────────────────────────
+  - type: worker
+    name: avana-v2-celery-beat
+    runtime: python
+    region: singapore
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A app.tasks.celery_app beat --loglevel=info
+    envVars:
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: avana-v2-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: avana-v2-redis
+          type: redis
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+
+databases:
+  # ── PostgreSQL + PostGIS ───────────────────────────────────────────────────
+  - name: avana-v2-db
+    plan: starter
+    region: singapore
+    databaseName: avana_v2
+    postgresMajorVersion: 16
+    ipAllowList: []  # allow all (Render internal)
+    postDeploy: |
+      CREATE EXTENSION IF NOT EXISTS postgis;
+      CREATE EXTENSION IF NOT EXISTS postgis_topology;
+      CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
+      CREATE EXTENSION IF NOT EXISTS pg_trgm;
+    # Note: Render auto-creates the DB. Run migrations after deploy via:
+    #   alembic upgrade head
+    # Add as a post-deploy build command once supported, or run manually.
+
+redis:
+  # ── Redis (broker + cache) ─────────────────────────────────────────────────
+  - name: avana-v2-redis
+    plan: starter
+    region: singapore
+    maxmemoryPolicy: allkeys-lru
