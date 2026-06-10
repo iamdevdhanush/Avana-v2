@@ -4,7 +4,7 @@ import logging
 import bcrypt
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List
-from fastapi import Request, Response, HTTPException, status
+from fastapi import Request, HTTPException
 from jose import jwt, JWTError
 
 from app.config import settings

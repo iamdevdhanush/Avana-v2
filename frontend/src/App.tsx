@@ -28,7 +28,7 @@ const queryClient = new QueryClient({
 })
 
 export default function App() {
-  const { isAuthenticated, token, loadUser } = useAuthStore()
+  const { token, loadUser } = useAuthStore()
 
   useEffect(() => {
     if (token && !useAuthStore.getState().user) {

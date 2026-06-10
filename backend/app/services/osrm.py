@@ -1,7 +1,6 @@
 import logging
 import httpx
 from typing import Optional, List, Tuple
-from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -10,9 +9,9 @@ class OSRMService:
     BASE_URL = "https://router.project-osrm.org"
 
     def __init__(self):
-        self.client = httpx.Client(timeout=30.0, follow_redirects=True)
+        self.client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
 
-    def get_route(
+    async def get_route(
         self,
         source: Tuple[float, float],
         destination: Tuple[float, float],
@@ -22,7 +21,7 @@ class OSRMService:
         dst_lat, dst_lng = destination
         coordinates = f"{src_lng},{src_lat};{dst_lng},{dst_lat}"
         try:
-            response = self.client.get(
+            response = await self.client.get(
                 f"{self.BASE_URL}/{profile}/v1/driving/{coordinates}",
                 params={
                     "overview": "full",
@@ -92,10 +91,10 @@ class OSRMService:
             logger.error(f"OSRM route error from {source} to {destination}: {e}")
             return None
 
-    def get_nearest_road(self, point: Tuple[float, float]) -> Optional[Tuple[float, float]]:
+    async def get_nearest_road(self, point: Tuple[float, float]) -> Optional[Tuple[float, float]]:
         lat, lng = point
         try:
-            response = self.client.get(
+            response = await self.client.get(
                 f"{self.BASE_URL}/nearest/v1/driving/{lng},{lat}.json",
                 params={"number": 1},
             )
@@ -117,8 +116,5 @@ class OSRMService:
             logger.error(f"Nearest road error for ({lat}, {lng}): {e}")
             return None
 
-    def close(self):
-        self.client.close()
-
-    def __del__(self):
-        self.close()
+    async def aclose(self):
+        await self.client.aclose()

@@ -1,16 +1,17 @@
+import asyncio
 import logging
 import time
 import httpx
 from typing import Optional
-from app.config import settings
 
 logger = logging.getLogger(__name__)
+
 
 class NominatimService:
     BASE_URL = "https://nominatim.openstreetmap.org"
 
     def __init__(self):
-        self.client = httpx.Client(
+        self.client = httpx.AsyncClient(
             timeout=10.0,
             follow_redirects=True,
             headers={
@@ -20,18 +21,18 @@ class NominatimService:
         )
         self._last_request_time = 0.0
 
-    def _rate_limit(self):
-        elapsed = time.time() - self._last_request_time
+    async def _rate_limit(self):
+        elapsed = time.monotonic() - self._last_request_time
         if elapsed < 1.0:
-            time.sleep(1.0 - elapsed)
-        self._last_request_time = time.time()
+            await asyncio.sleep(1.0 - elapsed)
+        self._last_request_time = time.monotonic()
 
-    def geocode(self, query: str) -> Optional[dict]:
+    async def geocode(self, query: str) -> Optional[dict]:
         if not query or not query.strip():
             return None
-        self._rate_limit()
+        await self._rate_limit()
         try:
-            response = self.client.get(
+            response = await self.client.get(
                 f"{self.BASE_URL}/search",
                 params={"q": query, "format": "json", "limit": 1, "addressdetails": 1},
             )
@@ -62,10 +63,10 @@ class NominatimService:
             logger.error(f"Geocoding error for '{query}': {e}")
             return None
 
-    def reverse_geocode(self, lat: float, lng: float) -> Optional[dict]:
-        self._rate_limit()
+    async def reverse_geocode(self, lat: float, lng: float) -> Optional[dict]:
+        await self._rate_limit()
         try:
-            response = self.client.get(
+            response = await self.client.get(
                 f"{self.BASE_URL}/reverse",
                 params={"lat": lat, "lon": lng, "format": "json", "addressdetails": 1},
             )
@@ -92,14 +93,14 @@ class NominatimService:
             logger.error(f"Reverse geocoding error for ({lat}, {lng}): {e}")
             return None
 
-    def search_structured(
+    async def search_structured(
         self,
         street: Optional[str] = None,
         city: Optional[str] = None,
         district: Optional[str] = None,
         state: Optional[str] = None,
     ) -> Optional[dict]:
-        self._rate_limit()
+        await self._rate_limit()
         params = {"format": "json", "limit": 1, "addressdetails": 1, "country": "India"}
         if street:
             params["street"] = street
@@ -110,7 +111,7 @@ class NominatimService:
         if state:
             params["state"] = state
         try:
-            response = self.client.get(f"{self.BASE_URL}/search", params=params)
+            response = await self.client.get(f"{self.BASE_URL}/search", params=params)
             response.raise_for_status()
             data = response.json()
             if data and len(data) > 0:
@@ -134,8 +135,5 @@ class NominatimService:
             logger.error(f"Structured search error: {e}")
             return None
 
-    def close(self):
-        self.client.close()
-
-    def __del__(self):
-        self.close()
+    async def aclose(self):
+        await self.client.aclose()

@@ -41,7 +41,7 @@ const defaultFilters: IncidentFilters = {
   dateTo: '',
 }
 
-export const useIncidentStore = create<IncidentState>((set, get) => ({
+export const useIncidentStore = create<IncidentState>()((set, get) => ({
   incidents: [],
   selectedIncident: null,
   filters: defaultFilters,

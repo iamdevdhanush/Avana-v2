@@ -1,9 +1,11 @@
 from typing import TypedDict, List, Optional
 from langgraph.graph import StateGraph, END
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 import math
+import json
+import uuid
 from sqlalchemy import text
 
 from app.database import async_session_factory
@@ -136,7 +138,7 @@ async def store_heatmap(state: HeatmapState) -> dict:
     data = state.get("heatmap_data", [])
     if not data:
         return {}
-    generated_at = datetime.utcnow().isoformat()
+    generated_at = datetime.now(timezone.utc).isoformat()
     async with async_session_factory() as session:
         try:
             params = []
@@ -146,20 +148,20 @@ async def store_heatmap(state: HeatmapState) -> dict:
                     "longitude": d["longitude"],
                     "score": d.get("score", 50.0),
                     "category": d.get("category", "Moderate"),
-                    "zoom_level": state["zoom_level"],
                     "district": state.get("district", ""),
                     "city": state.get("city", ""),
-                    "factors": str(d.get("factors", {})),
-                    "generated_at": generated_at,
+                    "meta_data": json.dumps(d.get("factors", {})),
+                    "calculated_at": generated_at,
+                    "location_id": uuid.uuid4(),
                 })
             await session.execute(
                 text("""
                     INSERT INTO risk_scores
-                        (latitude, longitude, score, category, zoom_level,
-                         district, city, factors, generated_at, created_at)
+                        (latitude, longitude, score, category, district,
+                         city, "metadata", location_id, calculated_at, created_at)
                     VALUES
-                        (:latitude, :longitude, :score, :category, :zoom_level,
-                         :district, :city, :factors::jsonb, :generated_at::timestamptz, NOW())
+                        (:latitude, :longitude, :score, :category, :district,
+                         :city, :meta_data::jsonb, :location_id, :calculated_at::timestamptz, NOW())
                 """),
                 params,
             )
@@ -220,19 +222,18 @@ async def get_heatmap_data(
                 text("""
                     SELECT DISTINCT ON (latitude, longitude)
                         latitude, longitude, score, category, district, city,
-                        factors, generated_at
+                        "metadata" as factors, calculated_at as generated_at
                     FROM risk_scores
                     WHERE latitude BETWEEN :sw_lat AND :ne_lat
                       AND longitude BETWEEN :sw_lng AND :ne_lng
-                      AND zoom_level = :zoom
-                    ORDER BY latitude, longitude, generated_at DESC
+                      AND calculated_at >= NOW() - interval '24 hours'
+                    ORDER BY latitude, longitude, calculated_at DESC
                 """),
                 {
                     "sw_lat": sw_lat,
                     "ne_lat": ne_lat,
                     "sw_lng": sw_lng,
                     "ne_lng": ne_lng,
-                    "zoom": zoom,
                 },
             )
             rows = result.fetchall()

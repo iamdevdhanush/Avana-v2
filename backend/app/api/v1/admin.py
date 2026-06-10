@@ -1,11 +1,10 @@
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.agents.runner import (
     run_news_pipeline,
@@ -81,7 +80,7 @@ async def admin_dashboard(
         for r in by_type.fetchall()
     ]
 
-    thirty_days_ago = (datetime.utcnow() - timedelta(days=30)).isoformat()
+    thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     risk_trend_rows = await db.execute(
         text("SELECT DATE(created_at) as dt, AVG(confidence_score) FROM incidents WHERE created_at >= :start GROUP BY dt ORDER BY dt"),
         {"start": thirty_days_ago},
@@ -182,7 +181,7 @@ async def moderate_incident(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid status: {body.status}")
 
     incident.moderated_by = admin.id
-    incident.updated_at = datetime.utcnow()
+    incident.updated_at = datetime.now(timezone.utc)
     await db.flush()
 
     return {
@@ -248,7 +247,7 @@ async def change_user_role(
     except ValueError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid role: {role}")
 
-    user.updated_at = datetime.utcnow()
+    user.updated_at = datetime.now(timezone.utc)
     await db.flush()
     return {"id": str(user.id), "role": user.role.value if hasattr(user.role, "value") else user.role}
 
@@ -266,7 +265,7 @@ async def change_user_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     user.is_active = is_active
-    user.updated_at = datetime.utcnow()
+    user.updated_at = datetime.now(timezone.utc)
     await db.flush()
     return {"id": str(user.id), "is_active": user.is_active}
 

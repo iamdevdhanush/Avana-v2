@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
@@ -91,8 +91,8 @@ async def test_list_incidents(async_client: AsyncClient, db_session, test_user):
             district="Bengaluru Urban",
             city="Bengaluru",
             user_id=test_user.id,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
         db_session.add(incident)
     await db_session.flush()
@@ -124,8 +124,8 @@ async def test_list_incidents_with_filters(async_client: AsyncClient, db_session
         district="Bengaluru Urban",
         city="Bengaluru",
         user_id=test_user.id,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     db_session.add(incident)
     await db_session.flush()
@@ -160,8 +160,8 @@ async def test_list_incidents_pagination(async_client: AsyncClient, db_session, 
             district="Bengaluru Urban",
             city="Bengaluru",
             user_id=test_user.id,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
         db_session.add(incident)
     await db_session.flush()
@@ -215,8 +215,8 @@ async def test_get_nearby_incidents(async_client: AsyncClient, db_session, test_
         district="Bengaluru Urban",
         city="Bengaluru",
         user_id=test_user.id,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     db_session.add(incident)
     await db_session.flush()
@@ -256,8 +256,8 @@ async def test_get_incident_stats(async_client: AsyncClient, db_session, test_us
             district="Bengaluru Urban",
             city="Bengaluru",
             user_id=test_user.id,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
         db_session.add(incident)
     await db_session.flush()

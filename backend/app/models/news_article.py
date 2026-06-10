@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import String, Float, DateTime, Text, Boolean, JSON, Enum as SAEnum, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -28,7 +28,7 @@ class NewsArticle(Base):
     source: Mapped[str] = mapped_column(String(100), nullable=True)
     source_type: Mapped[SourceType] = mapped_column(SAEnum(SourceType), nullable=False)
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     content: Mapped[str] = mapped_column(Text, nullable=True)
     summary: Mapped[str] = mapped_column(Text, nullable=True)
     incident_type: Mapped[str] = mapped_column(String(100), nullable=True)
@@ -41,4 +41,4 @@ class NewsArticle(Base):
     confidence_score: Mapped[float] = mapped_column(Float, default=0.0)
     is_processed: Mapped[bool] = mapped_column(Boolean, default=False)
     meta_data: Mapped[dict] = mapped_column("metadata", JSON().with_variant(JSONB, "postgresql"), default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

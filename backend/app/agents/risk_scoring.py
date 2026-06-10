@@ -3,7 +3,7 @@ from langgraph.graph import StateGraph, END
 import logging
 import math
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import text
 from app.database import async_session_factory
 
@@ -156,7 +156,7 @@ async def calculate_recent_impact(state: RiskScoreState) -> dict:
 
 async def calculate_night_factor(state: RiskScoreState) -> dict:
     factors = dict(state.get("factors", {}))
-    current_hour = datetime.utcnow().hour
+    current_hour = datetime.now(timezone.utc).hour
     is_night = current_hour >= NIGHT_START_HOUR or current_hour < NIGHT_END_HOUR
     factors["is_night"] = is_night
     factors["night_penalty"] = 15.0 if is_night else 0.0
@@ -285,7 +285,20 @@ async def run(lat: float, lng: float, district: Optional[str] = None) -> dict:
     return result
 
 
-async def batch_calculate(points: List[Tuple[float, float]]) -> List[dict]:
+async def batch_calculate(points: Optional[List[Tuple[float, float]]] = None, stale_only: bool = False) -> List[dict]:
+    if stale_only or points is None:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                text("""
+                    SELECT latitude, longitude FROM risk_scores
+                    WHERE calculated_at < NOW() - INTERVAL '6 hours'
+                       OR calculated_at IS NULL
+                """)
+            )
+            points = [(r[0], r[1]) for r in result.fetchall()]
+            if not points:
+                logger.info("No stale risk scores to recalculate")
+                return []
     results = []
     for lat, lng in points:
         try:

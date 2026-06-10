@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.agents.news_intelligence import run as news_run, run_scheduled as news_scheduled
@@ -18,7 +18,7 @@ async def run_news_pipeline() -> dict:
     logger.info("=" * 60)
     logger.info("Starting News Intelligence Pipeline")
     logger.info("=" * 60)
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     try:
         news_result = await news_run()
         logger.info(f"News pipeline: {news_result.get('saved_count', 0)} incidents saved")
@@ -27,7 +27,7 @@ async def run_news_pipeline() -> dict:
             "status": "completed",
             "incidents_saved": news_result.get("saved_count", 0),
             "errors": news_result.get("errors", []),
-            "duration_seconds": (datetime.utcnow() - start).total_seconds(),
+            "duration_seconds": (datetime.now(timezone.utc) - start).total_seconds(),
         }
     except Exception as e:
         logger.error(f"News pipeline failed: {e}")
@@ -35,7 +35,7 @@ async def run_news_pipeline() -> dict:
             "pipeline": "news",
             "status": "failed",
             "error": str(e),
-            "duration_seconds": (datetime.utcnow() - start).total_seconds(),
+            "duration_seconds": (datetime.now(timezone.utc) - start).total_seconds(),
         }
 
 
@@ -43,7 +43,7 @@ async def run_community_pipeline() -> dict:
     logger.info("=" * 60)
     logger.info("Starting Community Intelligence Pipeline")
     logger.info("=" * 60)
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     try:
         community_result = await community_run()
         logger.info(
@@ -58,7 +58,7 @@ async def run_community_pipeline() -> dict:
             "duplicates": len(community_result.get("duplicates_found", [])),
             "spam": len(community_result.get("spam_detected", [])),
             "errors": community_result.get("errors", []),
-            "duration_seconds": (datetime.utcnow() - start).total_seconds(),
+            "duration_seconds": (datetime.now(timezone.utc) - start).total_seconds(),
         }
     except Exception as e:
         logger.error(f"Community pipeline failed: {e}")
@@ -66,7 +66,7 @@ async def run_community_pipeline() -> dict:
             "pipeline": "community",
             "status": "failed",
             "error": str(e),
-            "duration_seconds": (datetime.utcnow() - start).total_seconds(),
+            "duration_seconds": (datetime.now(timezone.utc) - start).total_seconds(),
         }
 
 
@@ -152,7 +152,7 @@ async def run_all_agents() -> dict:
     logger.info("=" * 60)
     logger.info("RUNNING ALL AVANA AGENTS")
     logger.info("=" * 60)
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     results = {}
     results["news"] = await run_news_pipeline()
     results["community"] = await run_community_pipeline()
@@ -162,8 +162,8 @@ async def run_all_agents() -> dict:
     logger.info("=" * 60)
     results["_meta"] = {
         "started_at": start.isoformat(),
-        "completed_at": datetime.utcnow().isoformat(),
-        "total_duration_seconds": (datetime.utcnow() - start).total_seconds(),
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "total_duration_seconds": (datetime.now(timezone.utc) - start).total_seconds(),
     }
     for name, res in results.items():
         if name == "_meta":

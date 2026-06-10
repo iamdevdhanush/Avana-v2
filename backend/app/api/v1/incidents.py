@@ -1,14 +1,15 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from math import asin, cos, radians, sin, sqrt
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+import geoalchemy2
 from geoalchemy2.elements import WKTElement
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import get_current_user, require_user
+from app.dependencies import get_current_user
 from app.models.incident import Incident, IncidentStatus, IncidentSource, IncidentType, IncidentSeverity
 from app.models.user import User
 from app.schemas.incident import (
@@ -225,7 +226,6 @@ async def create_incident(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    import geoalchemy2
     incident = Incident(
         id=uuid.uuid4(),
         incident_type=body.incident_type,
@@ -243,8 +243,8 @@ async def create_incident(
         city=body.city,
         is_duplicate=False,
         user_id=user.id if user else None,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     db.add(incident)
     await db.flush()

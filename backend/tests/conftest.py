@@ -1,7 +1,7 @@
 import asyncio
 import sys
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -113,8 +113,8 @@ async def test_user(db_session: AsyncSession) -> User:
         role=UserRole.USER,
         is_verified=False,
         is_active=True,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
     await db_session.flush()
@@ -132,8 +132,8 @@ async def test_admin(db_session: AsyncSession) -> User:
         role=UserRole.ADMIN,
         is_verified=True,
         is_active=True,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     db_session.add(admin)
     await db_session.flush()
@@ -143,7 +143,7 @@ async def test_admin(db_session: AsyncSession) -> User:
 @pytest_asyncio.fixture
 async def auth_headers(test_user: User) -> dict:
     token = jwt.encode(
-        {"sub": str(test_user.id), "exp": datetime.utcnow() + timedelta(hours=24), "iat": datetime.utcnow()},
+        {"sub": str(test_user.id), "exp": datetime.now(timezone.utc) + timedelta(hours=24), "iat": datetime.now(timezone.utc)},
         settings.SECRET_KEY,
         algorithm=settings.JWT_ALGORITHM,
     )
@@ -153,7 +153,7 @@ async def auth_headers(test_user: User) -> dict:
 @pytest_asyncio.fixture
 async def admin_headers(test_admin: User) -> dict:
     token = jwt.encode(
-        {"sub": str(test_admin.id), "exp": datetime.utcnow() + timedelta(hours=24), "iat": datetime.utcnow()},
+        {"sub": str(test_admin.id), "exp": datetime.now(timezone.utc) + timedelta(hours=24), "iat": datetime.now(timezone.utc)},
         settings.SECRET_KEY,
         algorithm=settings.JWT_ALGORITHM,
     )
@@ -177,8 +177,8 @@ async def sample_incident(db_session: AsyncSession, test_user: User) -> Incident
         district="Bengaluru Urban",
         city="Bengaluru",
         user_id=test_user.id,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     db_session.add(incident)
     await db_session.flush()
@@ -194,7 +194,7 @@ async def sample_location(db_session: AsyncSession) -> Location:
         longitude=77.5946,
         district="Bengaluru Urban",
         city="Bengaluru",
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
     db_session.add(location)
     await db_session.flush()
@@ -212,8 +212,8 @@ async def sample_post(db_session: AsyncSession, test_user: User) -> CommunityPos
         upvotes=0,
         downvotes=0,
         is_verified=False,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     db_session.add(post)
     await db_session.flush()
@@ -228,8 +228,8 @@ async def sample_comment(db_session: AsyncSession, test_user: User, sample_post:
         user_id=test_user.id,
         content="Test comment content",
         upvotes=0,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     db_session.add(comment)
     await db_session.flush()
@@ -246,8 +246,8 @@ async def sample_sos(db_session: AsyncSession, test_user: User) -> SOSEvent:
         geom=None,
         message="Test SOS message",
         status=SOSStatus.TRIGGERED,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     db_session.add(sos)
     await db_session.flush()

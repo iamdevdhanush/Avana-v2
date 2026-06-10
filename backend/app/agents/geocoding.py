@@ -66,7 +66,7 @@ async def geocode_query(state: GeocodingState) -> dict:
         return {}
     query = state.get("query", "")
     try:
-        result = nominatim_service.geocode(f"{query}, Karnataka, India")
+        result = await nominatim_service.geocode(f"{query}, Karnataka, India")
         if result:
             return {"result": result, "error": None}
         else:

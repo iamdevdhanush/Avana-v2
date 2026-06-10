@@ -44,7 +44,7 @@ export function LoginScreen() {
   }
 
   const handleGoogleLogin = () => {
-    window.location.href = '/api/auth/google'
+    window.location.href = '/api/v1/auth/google'
   }
 
   return (

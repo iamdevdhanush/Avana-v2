@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, func, text
@@ -117,7 +117,7 @@ async def get_heatmap(
 
     return HeatmapResponse(
         points=points,
-        generated_at=datetime.utcnow().isoformat(),
+        generated_at=datetime.now(timezone.utc).isoformat(),
         district_summaries=summaries if summaries else None,
     )
 
@@ -167,5 +167,5 @@ async def get_district_risk(
         "high_risk_incidents": int(row[2]),
         "medium_risk_incidents": int(row[3]),
         "low_risk_incidents": int(row[4]),
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
     }

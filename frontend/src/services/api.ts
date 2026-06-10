@@ -424,9 +424,9 @@ export const adminApi = {
           highRisk: Number(d.high_risk || 0),
           mediumRisk: Number(d.medium_risk || 0),
           lowRisk: Number(d.low_risk || 0),
-          critical: Number(d.high_risk || 0),
-        })),
-        crimeTrends: ((inner.risk_trend || []) as Record<string, unknown>[]).map((t) => ({
+      critical: Number(d.critical || 0),
+    })),
+    crimeTrends: ((inner.risk_trend || []) as Record<string, unknown>[]).map((t) => ({
           date: String(t.date || ''),
           count: Number(t.value || 0),
         })),
@@ -500,7 +500,7 @@ export const analyticsApi = {
         highRisk: Number(d.high_risk || 0),
         mediumRisk: Number(d.medium_risk || 0),
         lowRisk: Number(d.low_risk || 0),
-        critical: Number(d.high_risk || 0),
+        critical: Number(d.critical || 0),
       }))
     } catch (error) { handleError(error) }
   },
