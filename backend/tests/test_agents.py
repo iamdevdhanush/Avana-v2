@@ -91,7 +91,7 @@ async def test_community_intelligence_classify():
 @pytest.mark.asyncio
 @pytest.mark.agents
 async def test_geocoding_agent():
-    with patch("app.agents.geocoding.nominatim_service.geocode") as mock_geocode:
+    with patch("app.agents.geocoding.nominatim_service.geocode", new_callable=AsyncMock) as mock_geocode:
         mock_geocode.return_value = {
             "lat": 12.9716,
             "lng": 77.5946,

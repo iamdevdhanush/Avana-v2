@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 from httpx import AsyncClient
@@ -59,8 +59,8 @@ async def test_get_sos_history(async_client: AsyncClient, auth_headers, db_sessi
             geom=None,
             message=f"SOS event {i}",
             status=SOSStatus.TRIGGERED,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
         db_session.add(sos)
     await db_session.flush()

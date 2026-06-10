@@ -2,7 +2,6 @@ from datetime import timedelta
 
 import pytest
 from jose import jwt
-from passlib.context import CryptContext
 
 from app.config import settings
 from app.utils.security import (

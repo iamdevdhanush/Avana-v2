@@ -1,7 +1,7 @@
 from typing import TypedDict, List, Optional
 from langgraph.graph import StateGraph, END
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import feedparser
 import httpx
 from bs4 import BeautifulSoup
@@ -269,7 +269,7 @@ async def save_incidents(state: NewsState) -> dict:
                     address=inc.get("display_name", ""),
                     district=inc.get("district", inc.get("source_city", "")),
                     city=inc.get("city", inc.get("source_city", "")),
-                    incident_date=datetime.utcnow(),
+                    incident_date=datetime.now(timezone.utc),
                     source_url=source_url,
                     ai_classified=True,
                 )

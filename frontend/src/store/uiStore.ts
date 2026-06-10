@@ -29,7 +29,7 @@ interface UIState {
   setIsOnline: (online: boolean) => void
 }
 
-export const useUIStore = create<UIState>((set) => ({
+export const useUIStore = create<UIState>()((set) => ({
   theme: 'dark',
   sidebarOpen: true,
   sidebarWidth: 280,

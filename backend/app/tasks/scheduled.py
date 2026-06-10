@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timezone
 from celery.schedules import crontab
@@ -47,7 +48,7 @@ def update_heatmaps(self):
     for district in districts:
         try:
             from app.agents.heatmap import generate_heatmap
-            result = generate_heatmap(zoom_level="district", district=district)
+            result = asyncio.run(generate_heatmap(zoom_level="district", district=district))
             results[district] = {
                 "status": "completed",
                 "points": len(result.get("heatmap_data", [])),
@@ -64,7 +65,7 @@ def calculate_risk_scores(self):
     logger.info("Starting batch risk score recalculation")
     try:
         from app.agents.risk_scoring import batch_calculate
-        result = batch_calculate(stale_only=True)
+        result = asyncio.run(batch_calculate(stale_only=True))
         logger.info(f"Risk score calculation completed: {result}")
         return result
     except Exception as e:

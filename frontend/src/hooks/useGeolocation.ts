@@ -117,13 +117,14 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
 
   useEffect(() => {
     mountedRef.current = true
+    startWatching()
     return () => {
       mountedRef.current = false
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current)
       }
     }
-  }, [])
+  }, [startWatching])
 
   return {
     position,

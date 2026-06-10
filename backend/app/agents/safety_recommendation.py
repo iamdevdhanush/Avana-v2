@@ -2,7 +2,7 @@ from typing import TypedDict, List, Optional
 from langgraph.graph import StateGraph, END
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import text
 
 from app.services.gemini import GeminiService
@@ -29,7 +29,7 @@ async def load_context(state: RecommendationState) -> dict:
     context["risk_score"] = risk_result.get("score")
     context["risk_category"] = risk_result.get("category")
     context["risk_factors"] = risk_result.get("factors", {})
-    current_hour = datetime.utcnow().hour
+    current_hour = datetime.now(timezone.utc).hour
     context["current_hour"] = current_hour
     context["is_night"] = current_hour >= 21 or current_hour < 6
     async with async_session_factory() as session:

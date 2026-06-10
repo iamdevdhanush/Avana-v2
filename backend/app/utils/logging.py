@@ -5,7 +5,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from typing import Callable
-from fastapi import Request, Response
+
 
 
 class JSONFormatter(logging.Formatter):

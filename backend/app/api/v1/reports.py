@@ -1,9 +1,10 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from geoalchemy2.elements import WKTElement
+from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,26 +13,31 @@ from app.dependencies import require_user
 from app.models.safety_report import SafetyReport, IncidentType, Severity, ReportStatus
 from app.models.user import User
 
+
+class ReportCreate(BaseModel):
+    incident_type: str
+    severity: str
+    latitude: float
+    longitude: float
+    description: Optional[str] = None
+    address: Optional[str] = None
+    district: Optional[str] = None
+    city: Optional[str] = None
+    is_anonymous: bool = False
+
+
 router = APIRouter(prefix="/reports", tags=["Safety Reports"])
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def submit_report(
-    incident_type: str = Query(..., description="Type of incident"),
-    severity: str = Query(..., description="Severity level"),
-    latitude: float = Query(..., description="Latitude"),
-    longitude: float = Query(..., description="Longitude"),
-    description: str = Query(None),
-    address: str = Query(None),
-    district: str = Query(None),
-    city: str = Query(None),
-    is_anonymous: bool = Query(False),
+    body: ReportCreate,
     user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        inc_type = IncidentType(incident_type)
-        sev = Severity(severity)
+        inc_type = IncidentType(body.incident_type)
+        sev = Severity(body.severity)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid value: {e}")
 
@@ -40,18 +46,18 @@ async def submit_report(
         user_id=user.id,
         incident_type=inc_type,
         severity=sev,
-        latitude=latitude,
-        longitude=longitude,
-        geom=WKTElement(f"POINT({longitude} {latitude})", srid=4326),
-        description=description,
-        address=address,
-        district=district,
-        city=city,
+        latitude=body.latitude,
+        longitude=body.longitude,
+        geom=WKTElement(f"POINT({body.longitude} {body.latitude})", srid=4326),
+        description=body.description,
+        address=body.address,
+        district=body.district,
+        city=body.city,
         status=ReportStatus.PENDING,
-        is_anonymous=is_anonymous,
+        is_anonymous=body.is_anonymous,
         is_verified=False,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     db.add(report)
     await db.flush()

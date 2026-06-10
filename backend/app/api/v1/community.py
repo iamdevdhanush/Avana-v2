@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -88,8 +88,8 @@ async def create_post(
         upvotes=0,
         downvotes=0,
         is_verified=False,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     db.add(post)
     await db.flush()
@@ -162,7 +162,7 @@ async def vote_post(
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid vote type")
 
-    post.updated_at = datetime.utcnow()
+    post.updated_at = datetime.now(timezone.utc)
     await db.flush()
     return {"id": str(post.id), "upvotes": post.upvotes, "downvotes": post.downvotes}
 
@@ -235,8 +235,8 @@ async def add_comment(
         parent_id=body.parent_id,
         content=body.content,
         upvotes=0,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     db.add(comment)
     await db.flush()

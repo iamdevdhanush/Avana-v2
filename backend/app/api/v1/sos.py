@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from geoalchemy2.elements import WKTElement
@@ -40,8 +40,8 @@ async def trigger_sos(
         status=SOSStatus.TRIGGERED,
         emergency_type=body.emergency_type,
         notified_contacts={"contacts": notified},
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     db.add(sos)
     await db.flush()

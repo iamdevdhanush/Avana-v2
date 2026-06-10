@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -89,6 +93,7 @@ jobs:
           pip install pytest pytest-asyncio httpx
       - name: Run tests
         env:
+          POSTGRES_USER: avana
           POSTGRES_PASSWORD: testpass
           POSTGRES_HOST: localhost
           POSTGRES_DB: avana_v2_test
@@ -144,6 +149,8 @@ jobs:
           context: ./backend
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - name: Build and push frontend
         uses: docker/build-push-action@v6
         with:
@@ -151,6 +158,8 @@ jobs:
           file: frontend/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
     needs: [build-and-push]

@@ -47,7 +47,7 @@ const initialState = {
   drawPath: [] as [number, number][],
 }
 
-export const useMapStore = create<MapState>((set) => ({
+export const useMapStore = create<MapState>()((set) => ({
   ...initialState,
 
   setCenter: (center) => set({ center }),

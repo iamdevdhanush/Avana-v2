@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import String, Float, DateTime, Text, Boolean, Integer, JSON, Enum as SAEnum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -30,8 +30,8 @@ class CommunityPost(Base):
     verified_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[PostStatus] = mapped_column(SAEnum(PostStatus), default=PostStatus.ACTIVE)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="community_posts")
     comments = relationship("Comment", back_populates="post", cascade="all, delete-orphan")

@@ -1,7 +1,7 @@
 from typing import TypedDict, List, Optional
 from langgraph.graph import StateGraph, END
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import asyncio
 from sqlalchemy import text, select
@@ -204,9 +204,9 @@ async def detect_spam(state: CommunityState) -> dict:
             try:
                 created_at = datetime.fromisoformat(created_at_str)
             except (ValueError, TypeError):
-                created_at = datetime.utcnow()
+                created_at = datetime.now(timezone.utc)
         else:
-            created_at = datetime.utcnow()
+            created_at = datetime.now(timezone.utc)
         if ip not in ip_timestamps:
             ip_timestamps[ip] = []
             ip_counts[ip] = 0
@@ -220,7 +220,7 @@ async def detect_spam(state: CommunityState) -> dict:
             text_sigs[words].append(report)
     for ip, timestamps in ip_timestamps.items():
         if ip_counts[ip] > MAX_REPORTS_PER_IP_MINUTE:
-            recent = [t for t in timestamps if (datetime.utcnow() - t).total_seconds() < 60]
+            recent = [t for t in timestamps if (datetime.now(timezone.utc) - t).total_seconds() < 60]
             if len(recent) > MAX_REPORTS_PER_IP_MINUTE:
                 logger.warning(f"Spam detected: IP {ip} submitted {len(recent)} reports in 60s")
     for words, group in text_sigs.items():
@@ -335,7 +335,7 @@ async def save_results(state: CommunityState) -> dict:
                                 description=(report.get("description") or "")[:500],
                                 district=report.get("district", ""),
                                 city=report.get("city", ""),
-                                incident_date=datetime.utcnow(),
+                                incident_date=datetime.now(timezone.utc),
                                 ai_classified=True,
                             )
                             session.add(incident)

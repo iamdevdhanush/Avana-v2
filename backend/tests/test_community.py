@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 from httpx import AsyncClient
@@ -53,8 +53,8 @@ async def test_list_posts(async_client: AsyncClient, db_session, test_user):
             upvotes=0,
             downvotes=0,
             is_verified=False,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
         db_session.add(post)
     await db_session.flush()
@@ -82,8 +82,8 @@ async def test_list_posts_pagination(async_client: AsyncClient, db_session, test
             upvotes=0,
             downvotes=0,
             is_verified=False,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
         db_session.add(post)
     await db_session.flush()
@@ -152,8 +152,8 @@ async def test_list_comments(async_client: AsyncClient, sample_post, test_user, 
             user_id=test_user.id,
             content=f"Comment {i}",
             upvotes=0,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
         db_session.add(comment)
     await db_session.flush()

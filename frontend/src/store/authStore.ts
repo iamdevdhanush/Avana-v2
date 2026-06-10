@@ -17,7 +17,7 @@ interface AuthState {
   clearError: () => void
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+export const useAuthStore = create<AuthState>()((set, get) => ({
   user: null,
   token: localStorage.getItem('avana_token'),
   isAuthenticated: !!localStorage.getItem('avana_token'),
