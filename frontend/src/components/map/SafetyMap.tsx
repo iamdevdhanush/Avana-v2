@@ -135,6 +135,7 @@ interface SafetyMapProps {
   showPolice?: boolean
   showHospitals?: boolean
   onLocationClick?: (pos: { lat: number; lng: number }) => void
+  children?: React.ReactNode
 }
 
 export function SafetyMap({
@@ -150,6 +151,7 @@ export function SafetyMap({
   showPolice = true,
   showHospitals = true,
   onLocationClick,
+  children,
 }: SafetyMapProps) {
   const { center, zoom, setCenter, setZoom, setSelectedLocation } = useMapStore()
   const mapRef = useRef<L.Map | null>(null)
@@ -200,6 +202,7 @@ export function SafetyMap({
 
       <ScaleControl position="bottomleft" />
       <ZoomControl position="bottomright" />
+      {children}
 
       <MapBoundsUpdater />
       <MapEventsHandler onClick={handleClick} />

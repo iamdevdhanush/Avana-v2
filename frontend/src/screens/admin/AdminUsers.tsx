@@ -35,15 +35,16 @@ export function AdminUsers() {
   const fetchUsers = React.useCallback(async () => {
     setLoading(true)
     try {
-      setUsers([])
-      setTotal(0)
-      setTotalPages(1)
+      const result = await adminApi.listUsers({ page, page_size: 20 })
+      setUsers(result.items)
+      setTotal(result.total)
+      setTotalPages(Math.ceil(result.total / result.page_size))
     } catch {
       addToast({ title: 'Failed to load users', variant: 'destructive' })
     } finally {
       setLoading(false)
     }
-  }, [addToast])
+  }, [addToast, page])
 
   React.useEffect(() => {
     fetchUsers()

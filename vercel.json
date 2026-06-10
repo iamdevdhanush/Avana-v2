@@ -1,19 +1,11 @@
 {
-  "experimentalServices": {
-    "frontend": {
-      "root": "frontend",
-      "routePrefix": "/",
-      "framework": "vite"
-    },
-    "backend": {
-      "root": "backend",
-      "routePrefix": "/_/backend"
-    }
-  },
+  "buildCommand": "cd frontend && npm run build",
+  "outputDirectory": "frontend/dist",
+  "framework": "vite",
   "rewrites": [
     {
-      "source": "/api/v1/(.*)",
-      "destination": "/_/backend/api/v1/$1"
+      "source": "/api/(.*)",
+      "destination": "https://avana-backend.onrender.com/api/$1"
     }
   ]
 }

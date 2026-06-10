@@ -66,9 +66,9 @@ export function MapScreen() {
           ? { lat: position.latitude, lng: position.longitude }
           : null}
         onLocationClick={handleLocationClick}
-      />
-
-      <MapControls onReportIncident={() => {}} />
+      >
+        <MapControls onReportIncident={() => {}} />
+      </SafetyMap>
 
       {showRoutePanel && (
         <RoutePanel onClose={() => setShowRoutePanel(false)} />
