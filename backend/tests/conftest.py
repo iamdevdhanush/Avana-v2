@@ -104,10 +104,12 @@ async def async_client(test_app: FastAPI) -> AsyncGenerator[httpx.AsyncClient, N
 
 @pytest_asyncio.fixture
 async def test_user(db_session: AsyncSession) -> User:
+    import bcrypt
     user = User(
         id=uuid.uuid4(),
         email="testuser@example.com",
         name="Test User",
+        hashed_password=bcrypt.hashpw(b"anypassword", bcrypt.gensalt()).decode("utf-8"),
         role=UserRole.USER,
         is_verified=False,
         is_active=True,
@@ -121,10 +123,12 @@ async def test_user(db_session: AsyncSession) -> User:
 
 @pytest_asyncio.fixture
 async def test_admin(db_session: AsyncSession) -> User:
+    import bcrypt
     admin = User(
         id=uuid.uuid4(),
         email="admin@example.com",
         name="Admin User",
+        hashed_password=bcrypt.hashpw(b"adminpass", bcrypt.gensalt()).decode("utf-8"),
         role=UserRole.ADMIN,
         is_verified=True,
         is_active=True,

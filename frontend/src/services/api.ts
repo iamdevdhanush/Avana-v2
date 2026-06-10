@@ -173,16 +173,16 @@ function mapSOS(e: Record<string, unknown>): SOSEvent {
 export const authApi = {
   login: async (email: string, password: string): Promise<{ token: string; user: User }> => {
     try {
-      const { data } = await api.post('/auth/login', { email, password })
-      const inner = data.data as Record<string, unknown>
+      const { data: raw } = await api.post('/auth/login', { email, password })
+      const inner = (raw.data || raw) as Record<string, unknown>
       return { token: String(inner.token || ''), user: mapUser(inner.user as Record<string, unknown>) }
     } catch (error) { handleError(error) }
   },
 
   signup: async (userData: { email: string; password: string; name: string; phone?: string }): Promise<{ token: string; user: User }> => {
     try {
-      const { data } = await api.post('/auth/signup', userData)
-      const inner = data.data as Record<string, unknown>
+      const { data: raw } = await api.post('/auth/signup', userData)
+      const inner = (raw.data || raw) as Record<string, unknown>
       return { token: String(inner.token || ''), user: mapUser(inner.user as Record<string, unknown>) }
     } catch (error) { handleError(error) }
   },
@@ -195,15 +195,15 @@ export const authApi = {
 
   getProfile: async (): Promise<User> => {
     try {
-      const { data } = await api.get('/auth/me')
-      return mapUser(data.data as Record<string, unknown>)
+      const { data: raw } = await api.get('/auth/me')
+      return mapUser((raw.data || raw) as Record<string, unknown>)
     } catch (error) { handleError(error) }
   },
 
   updateProfile: async (updates: Partial<User>): Promise<User> => {
     try {
-      const { data } = await api.put('/auth/me', updates)
-      return mapUser(data.data as Record<string, unknown>)
+      const { data: raw } = await api.put('/auth/me', updates)
+      return mapUser((raw.data || raw) as Record<string, unknown>)
     } catch (error) { handleError(error) }
   },
 }
@@ -223,8 +223,8 @@ export const incidentApi = {
       if (params?.type) bp['incident_type'] = params.type
       if (params?.severity) bp['severity'] = params.severity
       if (params?.status) bp['status'] = params.status
-      const { data } = await api.get('/incidents', { params: bp })
-      const inner = data.data as Record<string, unknown>
+      const { data: raw } = await api.get('/incidents', { params: bp })
+      const inner = (raw.data || raw) as Record<string, unknown>
       const items = (inner.items || []) as Record<string, unknown>[]
       return {
         data: items.map(mapIncident),
@@ -241,8 +241,8 @@ export const incidentApi = {
 
   getIncident: async (id: string): Promise<Incident> => {
     try {
-      const { data } = await api.get(`/incidents/${id}`)
-      return mapIncident(data.data as Record<string, unknown>)
+      const { data: raw } = await api.get(`/incidents/${id}`)
+      return mapIncident((raw.data || raw) as Record<string, unknown>)
     } catch (error) { handleError(error) }
   },
 
@@ -261,8 +261,8 @@ export const incidentApi = {
 export const riskApi = {
   getRiskScore: async (lat: number, lng: number): Promise<RiskScore> => {
     try {
-      const { data } = await api.post('/risk/score', { latitude: lat, longitude: lng })
-      const inner = data.data as Record<string, unknown>
+      const { data: raw } = await api.post('/risk/score', { latitude: lat, longitude: lng })
+      const inner = (raw.data || raw) as Record<string, unknown>
       const score01 = Number(inner.score || 0) / 100
       return {
         score: score01,
@@ -277,12 +277,12 @@ export const riskApi = {
 
   getHeatmapBounds: async (bounds: MapBounds, zoom: number): Promise<HeatmapPoint[]> => {
     try {
-      const { data } = await api.post('/risk/heatmap', {
+      const { data: raw } = await api.post('/risk/heatmap', {
         sw_lat: bounds.south, sw_lng: bounds.west,
         ne_lat: bounds.north, ne_lng: bounds.east,
         zoom,
       })
-      const inner = data.data as Record<string, unknown>
+      const inner = (raw.data || raw) as Record<string, unknown>
       const points = (inner.points || []) as Record<string, unknown>[]
       return points.map((p) => ({
         lat: Number(p.latitude || 0),
@@ -296,11 +296,11 @@ export const riskApi = {
 export const routeApi = {
   getSafeRoute: async (source: { lat: number; lng: number }, destination: { lat: number; lng: number }): Promise<RouteResult> => {
     try {
-      const { data } = await api.post('/route/safe', {
+      const { data: raw } = await api.post('/route/safe', {
         source_lat: source.lat, source_lng: source.lng,
         dest_lat: destination.lat, dest_lng: destination.lng,
       })
-      const inner = data.data as Record<string, unknown>
+      const inner = (raw.data || raw) as Record<string, unknown>
       return {
         safest: mapBackendRouteOption((inner.safest || {}) as Record<string, unknown>),
         fastest: mapBackendRouteOption((inner.fastest || {}) as Record<string, unknown>),
@@ -376,8 +376,8 @@ export const communityApi = {
 export const adminApi = {
   listUsers: async (p?: { page?: number; page_size?: number }): Promise<{ items: User[]; total: number; page: number; page_size: number }> => {
     try {
-      const { data } = await api.get('/admin/users', { params: p })
-      const inner = data.data as Record<string, unknown>
+      const { data: raw } = await api.get('/admin/users', { params: p })
+      const inner = (raw.data || raw) as Record<string, unknown>
       return {
         items: ((inner.items || []) as Record<string, unknown>[]).map(mapUser),
         total: Number(inner.total || 0),
@@ -389,8 +389,8 @@ export const adminApi = {
 
   getDashboardStats: async (): Promise<DashboardStats> => {
     try {
-      const { data } = await api.get('/admin/dashboard')
-      const inner = data.data as Record<string, unknown>
+      const { data: raw } = await api.get('/admin/dashboard')
+      const inner = (raw.data || raw) as Record<string, unknown>
       return {
         totalIncidents: Number(inner.total_incidents || 0),
         activeIncidents: Number(inner.verified_reports || 0),
@@ -509,8 +509,8 @@ export const analyticsApi = {
     try {
       const bp: Record<string, string | number> = {}
       if (p?.days) bp['days'] = p.days
-      const { data } = await api.get('/analytics/trends', { params: bp })
-      const inner = data.data as Record<string, unknown>
+      const { data: raw } = await api.get('/analytics/trends', { params: bp })
+      const inner = (raw.data || raw) as Record<string, unknown>
       const items = (inner.data || []) as Record<string, unknown>[]
       return (Array.isArray(items) ? items : []).map((t) => ({
         date: String(t.date || ''),

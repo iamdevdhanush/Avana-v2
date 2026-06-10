@@ -18,7 +18,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("users", sa.Column("hashed_password", sa.String(255), nullable=False))
+    op.add_column("users", sa.Column("hashed_password", sa.String(255), nullable=True))
+    op.execute("UPDATE users SET hashed_password = '' WHERE hashed_password IS NULL")
+    op.alter_column("users", "hashed_password", nullable=False, server_default="")
 
 
 def downgrade() -> None:

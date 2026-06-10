@@ -4,32 +4,65 @@ import logging
 import bcrypt
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List
-from fastapi import Request, Response
-from jose import jwt
+from fastapi import Request, Response, HTTPException, status
+from jose import jwt, JWTError
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+_MIN_PASSWORD_LENGTH = 8
+
+
+def validate_settings():
+    """Raise on startup if critical settings are missing."""
+    errors = []
+    if not settings.SECRET_KEY:
+        errors.append("SECRET_KEY is empty. Set it in .env for JWT signing.")
+    if not settings.DATABASE_URL or "asyncpg" not in settings.DATABASE_URL:
+        errors.append("DATABASE_URL is not properly configured.")
+    if errors:
+        for e in errors:
+            logger.critical(e)
+        raise RuntimeError("; ".join(errors))
+
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    if not password or len(password) < _MIN_PASSWORD_LENGTH:
+        raise ValueError(f"Password must be at least {_MIN_PASSWORD_LENGTH} characters")
+    try:
+        return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    except Exception as e:
+        logger.exception("bcrypt hashpw failed")
+        raise RuntimeError("Password hashing failed") from e
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    if not hashed:
+        return False
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception as e:
+        logger.exception("bcrypt checkpw failed")
+        return False
 
 
 def create_access_token(
     data: dict,
     expires_delta: Optional[timedelta] = None,
 ) -> str:
+    if not settings.SECRET_KEY:
+        raise RuntimeError("SECRET_KEY is not configured")
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(hours=settings.JWT_EXPIRATION_HOURS)
     )
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    try:
+        return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    except JWTError as e:
+        logger.exception("JWT encoding failed")
+        raise RuntimeError("Token generation failed") from e
 
 
 def create_rate_limiter():
