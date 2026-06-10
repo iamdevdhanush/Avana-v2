@@ -6,11 +6,11 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://avana-v2-backend.onrender.com/api/$1"
+      "destination": "https://avana-v2.onrender.com/api/$1"
     },
     {
       "source": "/ws/(.*)",
-      "destination": "https://avana-v2-backend.onrender.com/ws/$1"
+      "destination": "https://avana-v2.onrender.com/ws/$1"
     }
   ]
 }
