@@ -11,6 +11,10 @@
     {
       "source": "/ws/(.*)",
       "destination": "https://avana-v2.onrender.com/ws/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
