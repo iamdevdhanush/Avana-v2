@@ -12,15 +12,13 @@ import sqlalchemy as sa
 
 
 revision: str = "001"
-down_revision: Union[str, None] = None
+down_revision: Union[str, None] = "000"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("users", sa.Column("hashed_password", sa.String(255), nullable=True))
-    op.execute("UPDATE users SET hashed_password = '' WHERE hashed_password IS NULL")
-    op.alter_column("users", "hashed_password", nullable=False, server_default="")
+    """Table is now fully created in migration 000."""
 
 
 def downgrade() -> None:
