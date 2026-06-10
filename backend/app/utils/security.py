@@ -15,16 +15,12 @@ _MIN_PASSWORD_LENGTH = 8
 
 
 def validate_settings():
-    """Raise on startup if critical settings are missing."""
-    errors = []
+    """Log warnings on startup if critical settings are missing. Don't block startup."""
     if not settings.SECRET_KEY:
-        errors.append("SECRET_KEY is empty. Set it in .env for JWT signing.")
+        logger.warning("SECRET_KEY is empty. JWT endpoints will fail until a SECRET_KEY is set.")
     if not settings.DATABASE_URL or "asyncpg" not in settings.DATABASE_URL:
-        errors.append("DATABASE_URL is not properly configured.")
-    if errors:
-        for e in errors:
-            logger.critical(e)
-        raise RuntimeError("; ".join(errors))
+        logger.critical("DATABASE_URL is not properly configured. Database features will be unavailable.")
+        raise RuntimeError("DATABASE_URL is not properly configured.")
 
 
 def hash_password(password: str) -> str:

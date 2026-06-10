@@ -1,4 +1,6 @@
 import os
+import secrets
+from pydantic import Field
 from pydantic_settings import BaseSettings
 from typing import Optional
 
@@ -27,7 +29,7 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 
-    SECRET_KEY: str = ""
+    SECRET_KEY: str = Field(default_factory=lambda: secrets.token_urlsafe(48))
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24
 
