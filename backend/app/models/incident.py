@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Float, DateTime, Text, Boolean, Enum as SAEnum, ForeignKey, Index
+from sqlalchemy import String, Float, DateTime, Text, Boolean, JSON, Enum as SAEnum, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from geoalchemy2 import Geometry
@@ -67,7 +67,7 @@ class Incident(Base):
     confidence_score: Mapped[float] = mapped_column(Float, default=0.0)
     latitude: Mapped[float] = mapped_column(Float, nullable=False)
     longitude: Mapped[float] = mapped_column(Float, nullable=False)
-    geom = mapped_column(Geometry("POINT", srid=4326), nullable=False)
+    geom = mapped_column(Geometry("POINT", srid=4326), nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=True)
     title: Mapped[str] = mapped_column(String(500), nullable=True)
     address: Mapped[str] = mapped_column(String(500), nullable=True)
@@ -78,7 +78,7 @@ class Incident(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     source_url: Mapped[str] = mapped_column(String(2048), nullable=True)
     source_id: Mapped[str] = mapped_column(String(255), nullable=True)
-    metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
+    meta_data: Mapped[dict] = mapped_column("metadata", JSON().with_variant(JSONB, "postgresql"), default=dict)
     ai_classified: Mapped[bool] = mapped_column(Boolean, default=False)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     moderated_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)

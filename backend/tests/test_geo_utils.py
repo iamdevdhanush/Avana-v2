@@ -29,7 +29,7 @@ def test_haversine_same_point():
 @pytest.mark.geo
 def test_haversine_bengaluru_to_mysore():
     distance = haversine_distance(12.9716, 77.5946, 12.2958, 76.6394)
-    assert 130 < distance < 150
+    assert 125 < distance < 135
 
 
 @pytest.mark.geo

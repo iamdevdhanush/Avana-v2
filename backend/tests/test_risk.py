@@ -121,4 +121,4 @@ async def test_get_district_risk_summary_not_found(async_client: AsyncClient):
     response = await async_client.get("/api/v1/risk/district/NonExistentDistrict")
     assert response.status_code == 404
     data = response.json()
-    assert "not found" in data["detail"].lower()
+    assert "no data found" in data["detail"].lower()

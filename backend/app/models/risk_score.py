@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Float, DateTime, Enum as SAEnum, ForeignKey
+from sqlalchemy import String, Float, DateTime, JSON, Enum as SAEnum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from geoalchemy2 import Geometry
@@ -35,6 +35,6 @@ class RiskScore(Base):
     night_factor: Mapped[float] = mapped_column(Float, nullable=True)
     historical_risk: Mapped[float] = mapped_column(Float, nullable=True)
     recent_reports_impact: Mapped[float] = mapped_column(Float, nullable=True)
-    metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
+    meta_data: Mapped[dict] = mapped_column("metadata", JSON().with_variant(JSONB, "postgresql"), default=dict)
     calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

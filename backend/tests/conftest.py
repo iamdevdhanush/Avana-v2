@@ -1,8 +1,12 @@
 import asyncio
+import sys
 import uuid
 from datetime import datetime, timedelta
 from typing import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, MagicMock, patch
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 import httpx
 import pytest
@@ -32,13 +36,6 @@ from app.models.hospital import Hospital
 from app.models.audit_log import AuditLog
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
 settings.SECRET_KEY = "test-secret-key-for-testing-purposes-only"
 settings.JWT_ALGORITHM = "HS256"
 settings.JWT_EXPIRATION_HOURS = 24
@@ -64,6 +61,16 @@ def test_engine():
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
+        dbapi_connection.create_function("GeomFromEWKT", -1, lambda *a: a[0] if a else None)
+        dbapi_connection.create_function("AsEWKB", 1, lambda x: x)
+        dbapi_connection.create_function("ST_MakePoint", 2, lambda x, y: f"POINT({x} {y})")
+        dbapi_connection.create_function("ST_SetSRID", 2, lambda g, s: g)
+        dbapi_connection.create_function("ST_Distance", 2, lambda a, b: 0.0)
+        dbapi_connection.create_function("ST_DWithin", 3, lambda a, b, r: 1)
+        dbapi_connection.create_function("ST_AsGeoJSON", 1, lambda g: '{"type":"Point","coordinates":[0,0]}')
+        dbapi_connection.create_function("RecoverGeometryColumn", 5, lambda *a: None)
+        dbapi_connection.create_function("DiscardGeometryColumn", 1, lambda *a: None)
+        dbapi_connection.create_function("CreateSpatialIndex", 2, lambda *a: None)
 
     yield engine
 

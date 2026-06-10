@@ -8,9 +8,10 @@ from httpx import AsyncClient
 @pytest.mark.chat
 async def test_chat_no_api_key(async_client: AsyncClient, auth_headers):
     payload = {"message": "What are some safety tips for Bengaluru?"}
-    with patch("app.api.v1.chat.GeminiService") as MockGemini:
+    with patch("app.services.gemini.GeminiService") as MockGemini:
         instance = MockGemini.return_value
         instance.is_available.return_value = False
+        instance.generate.side_effect = ImportError("not available")
         response = await async_client.post("/api/v1/chat/message", json=payload, headers=auth_headers)
         assert response.status_code == 501
         data = response.json()
@@ -46,7 +47,7 @@ async def test_chat_with_history(async_client: AsyncClient, auth_headers):
         ],
         "location": {"latitude": 12.9352, "longitude": 77.6245},
     }
-    with patch("app.api.v1.chat.GeminiService") as MockGemini:
+    with patch("app.services.gemini.GeminiService") as MockGemini:
         instance = MockGemini.return_value
         instance.is_available.return_value = True
         instance.generate.return_value = "Stay aware of your surroundings and use well-lit streets."
@@ -71,7 +72,7 @@ async def test_chat_without_auth(async_client: AsyncClient):
 @pytest.mark.chat
 async def test_chat_gemini_error(async_client: AsyncClient, auth_headers):
     payload = {"message": "Tell me about safety in Bangalore."}
-    with patch("app.api.v1.chat.GeminiService") as MockGemini:
+    with patch("app.services.gemini.GeminiService") as MockGemini:
         instance = MockGemini.return_value
         instance.is_available.return_value = True
         instance.generate.side_effect = Exception("API Error")

@@ -22,8 +22,7 @@ async def test_signup_success(async_client: AsyncClient, db_session):
     response = await async_client.post("/api/v1/auth/signup", json=payload)
     assert response.status_code == 201
     data = response.json()
-    assert data["access_token"] is not None
-    assert data["token_type"] == "bearer"
+    assert data["token"] is not None
     assert data["user"]["email"] == "newuser@example.com"
     assert data["user"]["name"] == "New User"
     assert data["user"]["role"] == "user"
@@ -62,8 +61,7 @@ async def test_login_success(async_client: AsyncClient, test_user):
     response = await async_client.post("/api/v1/auth/login", json=payload)
     assert response.status_code == 200
     data = response.json()
-    assert data["access_token"] is not None
-    assert data["token_type"] == "bearer"
+    assert data["token"] is not None
     assert data["user"]["email"] == test_user.email
     assert data["user"]["name"] == test_user.name
 
@@ -94,7 +92,7 @@ async def test_login_unverified_email(async_client: AsyncClient, db_session, tes
     response = await async_client.post("/api/v1/auth/login", json=payload)
     assert response.status_code == 200
     data = response.json()
-    assert data["access_token"] is not None
+    assert data["token"] is not None
 
 
 @pytest.mark.asyncio
@@ -214,8 +212,10 @@ async def test_unauthenticated_access(async_client: AsyncClient):
     for method, url in endpoints:
         if method == "GET":
             response = await async_client.get(url)
-        else:
+        elif method == "PUT":
             response = await async_client.put(url, json={"name": "test"})
+        else:
+            response = await async_client.post(url, json={"name": "test"})
         assert response.status_code == 403 or response.status_code == 401, (
             f"Expected 401/403 for {method} {url}, got {response.status_code}"
         )

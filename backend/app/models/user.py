@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, DateTime, Boolean, Enum as SAEnum, Text
+from sqlalchemy import String, DateTime, Boolean, Enum as SAEnum, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship as orm_relationship
 from app.database import Base
 import enum
 
@@ -29,11 +29,11 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     last_login: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    emergency_contacts = relationship("EmergencyContact", back_populates="user", cascade="all, delete-orphan")
-    safety_reports = relationship("SafetyReport", back_populates="user")
-    sos_events = relationship("SOSEvent", back_populates="user")
-    community_posts = relationship("CommunityPost", back_populates="user")
-    comments = relationship("Comment", back_populates="user")
+    emergency_contacts = orm_relationship("EmergencyContact", back_populates="user", cascade="all, delete-orphan")
+    safety_reports = orm_relationship("SafetyReport", back_populates="user")
+    sos_events = orm_relationship("SOSEvent", back_populates="user")
+    community_posts = orm_relationship("CommunityPost", back_populates="user")
+    comments = orm_relationship("Comment", back_populates="user")
 
 
 class EmergencyContact(Base):
@@ -47,4 +47,4 @@ class EmergencyContact(Base):
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
-    user = relationship("User", back_populates="emergency_contacts")
+    user = orm_relationship("User", back_populates="emergency_contacts")

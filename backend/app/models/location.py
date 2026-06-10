@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Float, DateTime, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Float, DateTime, Text, JSON
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from geoalchemy2 import Geometry
 from app.database import Base
@@ -23,5 +23,5 @@ class Location(Base):
     ward: Mapped[str] = mapped_column(String(100), nullable=True)
     pincode: Mapped[str] = mapped_column(String(10), nullable=True)
     location_type: Mapped[str] = mapped_column(String(50), nullable=True)
-    metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
+    meta_data: Mapped[dict] = mapped_column("metadata", JSON().with_variant(JSONB, "postgresql"), default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
