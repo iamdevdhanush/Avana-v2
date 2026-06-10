@@ -3,7 +3,7 @@ from datetime import datetime
 from math import asin, cos, radians, sin, sqrt
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from geoalchemy2 import WKTElement
+from geoalchemy2.elements import WKTElement
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -108,14 +108,16 @@ async def get_nearby_incidents(
     db: AsyncSession = Depends(get_db),
 ):
     radius_meters = radius * 1000
+    dialect_name = db.get_bind().dialect.name
+    geography_cast = "::geography" if dialect_name == "postgresql" else ""
     result = await db.execute(
-        text("""
+        text(f"""
             SELECT id, incident_type, severity, source, status, confidence_score,
                    latitude, longitude, description, title, district, city,
                    incident_date, created_at,
-                   ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography) as dist_meters
+                   ST_Distance(geom{geography_cast}, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326){geography_cast}) as dist_meters
             FROM incidents
-            WHERE ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :radius)
+            WHERE ST_DWithin(geom{geography_cast}, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326){geography_cast}, :radius)
             ORDER BY dist_meters ASC
             LIMIT :lim
         """),
@@ -233,7 +235,7 @@ async def create_incident(
         confidence_score=0.0,
         latitude=body.latitude,
         longitude=body.longitude,
-        geom=geoalchemy2.WKTElement(f"POINT({body.longitude} {body.latitude})", srid=4326),
+        geom=WKTElement(f"POINT({body.longitude} {body.latitude})", srid=4326),
         description=body.description,
         title=body.title,
         address=body.address,

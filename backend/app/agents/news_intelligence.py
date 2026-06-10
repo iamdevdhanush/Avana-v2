@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 import json
 import asyncio
 from sqlalchemy import select
-from geoalchemy2 import WKTElement
+from geoalchemy2.elements import WKTElement
 
 from app.services.gemini import GeminiService
 from app.database import async_session_factory

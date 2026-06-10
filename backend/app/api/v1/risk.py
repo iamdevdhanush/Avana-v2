@@ -88,11 +88,11 @@ async def get_heatmap(
     district_result = await db.execute(
         text("""
             SELECT district,
-                   AVG(score) as avg_score,
+                   AVG(confidence_score) as avg_score,
                    COUNT(*) as total_incidents,
                    CASE
-                       WHEN AVG(score) < 30 THEN 'improving'
-                       WHEN AVG(score) < 60 THEN 'stable'
+                       WHEN AVG(confidence_score) < 30 THEN 'improving'
+                       WHEN AVG(confidence_score) < 60 THEN 'stable'
                        ELSE 'worsening'
                    END as trend
             FROM incidents

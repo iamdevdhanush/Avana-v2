@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Float, DateTime, Text, Boolean, Enum as SAEnum, Index
+from sqlalchemy import String, Float, DateTime, Text, Boolean, JSON, Enum as SAEnum, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from geoalchemy2 import Geometry
@@ -40,5 +40,5 @@ class NewsArticle(Base):
     city: Mapped[str] = mapped_column(String(100), nullable=True)
     confidence_score: Mapped[float] = mapped_column(Float, default=0.0)
     is_processed: Mapped[bool] = mapped_column(Boolean, default=False)
-    metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
+    meta_data: Mapped[dict] = mapped_column("metadata", JSON().with_variant(JSONB, "postgresql"), default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

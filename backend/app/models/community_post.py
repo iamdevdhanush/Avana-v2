@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Float, DateTime, Text, Boolean, Integer, Enum as SAEnum, ForeignKey
+from sqlalchemy import String, Float, DateTime, Text, Boolean, Integer, JSON, Enum as SAEnum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -23,7 +23,7 @@ class CommunityPost(Base):
     longitude: Mapped[float] = mapped_column(Float, nullable=True)
     location_name: Mapped[str] = mapped_column(String(255), nullable=True)
     post_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    tags: Mapped[dict] = mapped_column(JSONB, default=dict)
+    tags: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=dict)
     upvotes: Mapped[int] = mapped_column(Integer, default=0)
     downvotes: Mapped[int] = mapped_column(Integer, default=0)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)

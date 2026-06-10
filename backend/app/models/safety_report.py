@@ -53,7 +53,7 @@ class SafetyReport(Base):
     severity: Mapped[Severity] = mapped_column(SAEnum(Severity), nullable=False)
     latitude: Mapped[float] = mapped_column(Float, nullable=False)
     longitude: Mapped[float] = mapped_column(Float, nullable=False)
-    geom = mapped_column(Geometry("POINT", srid=4326), nullable=False)
+    geom = mapped_column(Geometry("POINT", srid=4326), nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=True)
     address: Mapped[str] = mapped_column(String(500), nullable=True)
     district: Mapped[str] = mapped_column(String(100), nullable=True)

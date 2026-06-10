@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from geoalchemy2 import WKTElement
+from geoalchemy2.elements import WKTElement
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 

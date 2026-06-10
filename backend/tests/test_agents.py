@@ -7,9 +7,8 @@ import pytest_asyncio
 @pytest.mark.asyncio
 @pytest.mark.agents
 async def test_news_intelligence_extract():
-    with patch("app.agents.news_intelligence.GeminiService") as MockGemini:
-        instance = MockGemini.return_value
-        instance.generate.return_value = (
+    with patch("app.agents.news_intelligence.gemini_service.generate") as mock_generate:
+        mock_generate.return_value = (
             '[{"incident_type": "theft", "severity": "medium", '
             '"location": "MG Road", "district": "Bengaluru Urban", '
             '"city": "Bengaluru", "description": "Mobile phone theft", '
@@ -47,9 +46,8 @@ async def test_news_intelligence_extract():
 @pytest.mark.asyncio
 @pytest.mark.agents
 async def test_community_intelligence_classify():
-    with patch("app.agents.community_intelligence.GeminiService") as MockGemini:
-        instance = MockGemini.return_value
-        instance.generate.return_value = (
+    with patch("app.agents.community_intelligence.gemini_service.generate") as mock_generate:
+        mock_generate.return_value = (
             '{"validated_type": "harassment", "validated_severity": "high", '
             '"location_coherent": true, "description_valid": true, '
             '"confidence_adjustment": 0.1, "notes": "Valid report"}'
@@ -93,9 +91,8 @@ async def test_community_intelligence_classify():
 @pytest.mark.asyncio
 @pytest.mark.agents
 async def test_geocoding_agent():
-    with patch("app.agents.geocoding.NominatimService") as MockNominatim:
-        instance = MockNominatim.return_value
-        instance.geocode.return_value = {
+    with patch("app.agents.geocoding.nominatim_service.geocode") as mock_geocode:
+        mock_geocode.return_value = {
             "lat": 12.9716,
             "lng": 77.5946,
             "display_name": "MG Road, Bengaluru, Karnataka, India",

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from app.config import settings
 from app.database import init_db
-from app.api.v1 import api_router
+from app.api.router import api_router
 from app.utils.security import sanitize_input
 
 logger = logging.getLogger(__name__)
@@ -80,6 +80,35 @@ async def sanitize_inputs(request: Request, call_next):
             except UnicodeDecodeError:
                 pass
     return await call_next(request)
+
+
+@app.middleware("http")
+async def wrap_api_response(request: Request, call_next):
+    response = await call_next(request)
+    if response.status_code >= 400:
+        return response
+    content_type = response.headers.get("content-type", "")
+    if not content_type.startswith("application/json"):
+        return response
+    try:
+        body = response.body if isinstance(response.body, bytes) else b""
+    except Exception:
+        return response
+    if not body:
+        return response
+    import json
+    try:
+        data = json.loads(body)
+    except (json.JSONDecodeError, TypeError):
+        return response
+    if isinstance(data, dict) and ("data" in data or "status" in data):
+        return response
+    wrapped = {"data": data, "status": "success"}
+    return JSONResponse(
+        content=wrapped,
+        status_code=response.status_code,
+        headers={k: v for k, v in response.headers.items() if k.lower() not in ("content-length",)},
+    )
 
 
 app.include_router(api_router)

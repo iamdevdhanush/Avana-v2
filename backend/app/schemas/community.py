@@ -2,11 +2,11 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CommunityPostCreate(BaseModel):
-    content: str
+    content: str = Field(..., min_length=1)
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     location_name: Optional[str] = None

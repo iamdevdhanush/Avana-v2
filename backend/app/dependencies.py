@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +31,7 @@ async def get_current_user(
 
 async def require_user(user: Optional[User] = Depends(get_current_user)) -> User:
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UUID, detail="Not authenticated")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return user
 
 

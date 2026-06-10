@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Float, DateTime, Text, Enum as SAEnum, ForeignKey
+from sqlalchemy import String, Float, DateTime, Text, JSON, Enum as SAEnum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from geoalchemy2 import Geometry
@@ -22,11 +22,11 @@ class SOSEvent(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     latitude: Mapped[float] = mapped_column(Float, nullable=False)
     longitude: Mapped[float] = mapped_column(Float, nullable=False)
-    geom = mapped_column(Geometry("POINT", srid=4326), nullable=False)
+    geom = mapped_column(Geometry("POINT", srid=4326), nullable=True)
     message: Mapped[str] = mapped_column(Text, nullable=True)
     status: Mapped[SOSStatus] = mapped_column(SAEnum(SOSStatus), default=SOSStatus.TRIGGERED)
     emergency_type: Mapped[str] = mapped_column(String(50), nullable=True)
-    notified_contacts: Mapped[dict] = mapped_column(JSONB, default=dict)
+    notified_contacts: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=dict)
     responder_assigned: Mapped[str] = mapped_column(String(255), nullable=True)
     resolved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

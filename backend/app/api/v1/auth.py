@@ -1,11 +1,10 @@
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from jose import jwt
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from passlib.context import CryptContext
 
 from app.config import settings
 from app.database import get_db
@@ -23,12 +22,10 @@ from app.schemas.auth import (
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def _create_token(user_id: str) -> str:
-    expire = datetime.utcnow() + timedelta(hours=settings.JWT_EXPIRATION_HOURS)
-    payload = {"sub": user_id, "exp": expire, "iat": datetime.utcnow()}
+    expire = datetime.now(timezone.utc) + timedelta(hours=settings.JWT_EXPIRATION_HOURS)
+    payload = {"sub": user_id, "exp": expire, "iat": datetime.now(timezone.utc)}
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
@@ -45,16 +42,15 @@ async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
         role=UserRole.USER,
         is_verified=False,
         is_active=True,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     db.add(user)
     await db.flush()
 
     token = _create_token(str(user.id))
     return AuthResponse(
-        access_token=token,
-        token_type="bearer",
+        token=token,
         user=UserResponse(
             id=user.id,
             email=user.email,
@@ -73,13 +69,12 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
-    user.last_login = datetime.utcnow()
+    user.last_login = datetime.now(timezone.utc)
     await db.flush()
 
     token = _create_token(str(user.id))
     return AuthResponse(
-        access_token=token,
-        token_type="bearer",
+        token=token,
         user=UserResponse(
             id=user.id,
             email=user.email,
@@ -118,7 +113,7 @@ async def update_me(
         user.name = body.name
     if body.phone is not None:
         user.phone = body.phone
-    user.updated_at = datetime.utcnow()
+    user.updated_at = datetime.now(timezone.utc)
     await db.flush()
     return UserResponse(
         id=user.id,

@@ -3,7 +3,6 @@ from langgraph.graph import StateGraph, END
 import logging
 import asyncio
 from sqlalchemy import text
-from geoalchemy2 import WKTElement
 
 from app.services.nominatim import NominatimService
 from app.database import async_session_factory

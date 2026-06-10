@@ -175,7 +175,7 @@ async def test_vote_post(async_client: AsyncClient, auth_headers, sample_post):
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["upvotes"] == sample_post.upvotes + 1
+    assert data["upvotes"] == 1
 
 
 @pytest.mark.asyncio
@@ -186,7 +186,7 @@ async def test_vote_post_down(async_client: AsyncClient, auth_headers, sample_po
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["downvotes"] == sample_post.downvotes + 1
+    assert data["downvotes"] == 1
 
 
 @pytest.mark.asyncio
