@@ -16,7 +16,8 @@ import type {
   ApiResponse,
 } from '@/types'
 
-const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
+const RAW = import.meta.env.VITE_API_URL || ''
+const API_URL = RAW.endsWith('/api/v1') ? RAW : RAW ? `${RAW}/api/v1` : '/api/v1'
 
 const api = axios.create({
   baseURL: API_URL,

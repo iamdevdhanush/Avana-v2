@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_MAX: int = 100
     RATE_LIMIT_WINDOW: int = 60
 
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS: str = "https://avana-v2.vercel.app,http://localhost:5173,http://localhost:3000"
 
     NEWS_SCRAPE_INTERVAL_MINUTES: int = 360
     AGENT_RUN_INTERVAL_MINUTES: int = 60
