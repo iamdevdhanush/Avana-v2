@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status
 from jose import jwt
 from sqlalchemy import select, delete
@@ -35,9 +36,12 @@ async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
+    hashed = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt())
+
     user = User(
         id=uuid.uuid4(),
         email=body.email,
+        hashed_password=hashed.decode("utf-8"),
         name=body.name,
         role=UserRole.USER,
         is_verified=False,
@@ -66,7 +70,7 @@ async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
-    if not user:
+    if not user or not bcrypt.checkpw(body.password.encode("utf-8"), user.hashed_password.encode("utf-8")):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
     user.last_login = datetime.now(timezone.utc)
@@ -188,3 +192,96 @@ async def delete_contact(
     await db.delete(contact)
     await db.flush()
     return {"message": "Contact deleted successfully"}
+
+
+@router.get("/google")
+async def google_login():
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Google OAuth not configured")
+    redirect_uri = settings.GOOGLE_REDIRECT_URI
+    google_auth_url = (
+        "https://accounts.google.com/o/oauth2/v2/auth"
+        f"?client_id={settings.GOOGLE_CLIENT_ID}"
+        f"&redirect_uri={redirect_uri}"
+        "&response_type=code"
+        "&scope=openid%20email%20profile"
+    )
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=google_auth_url)
+
+
+@router.get("/google/callback")
+async def google_callback(
+    code: str,
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Google OAuth not configured")
+
+    import httpx
+    token_url = "https://oauth2.googleapis.com/token"
+    token_data = {
+        "code": code,
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "client_secret": settings.GOOGLE_CLIENT_SECRET,
+        "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+        "grant_type": "authorization_code",
+    }
+    async with httpx.AsyncClient() as client:
+        token_resp = await client.post(token_url, data=token_data)
+        if token_resp.status_code != 200:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to exchange Google auth code")
+        token_json = token_resp.json()
+        access_token = token_json.get("access_token")
+
+        userinfo_resp = await client.get(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        if userinfo_resp.status_code != 200:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to get Google user info")
+        google_user = userinfo_resp.json()
+
+    email = google_user.get("email")
+    name = google_user.get("name", "")
+    google_id = google_user.get("id")
+
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google account has no email")
+
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        user = User(
+            id=uuid.uuid4(),
+            email=email,
+            hashed_password="",
+            name=name,
+            role=UserRole.USER,
+            is_verified=True,
+            is_active=True,
+            avatar_url=google_user.get("picture"),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add(user)
+        await db.flush()
+    else:
+        if google_user.get("picture"):
+            user.avatar_url = google_user.get("picture")
+        user.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+
+    token = _create_token(str(user.id))
+    return AuthResponse(
+        token=token,
+        user=UserResponse(
+            id=user.id,
+            email=user.email,
+            name=user.name,
+            role=user.role.value,
+            is_verified=user.is_verified,
+            created_at=user.created_at,
+        ),
+    )
