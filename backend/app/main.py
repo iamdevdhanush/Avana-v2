@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from sqlalchemy.exc import IntegrityError, DataError
 import logging
 import time
 import uuid
@@ -10,7 +12,7 @@ from datetime import datetime, timezone
 from app.config import settings
 from app.database import init_db
 from app.api.router import api_router
-from app.utils.security import sanitize_input
+from app.utils.security import sanitize_input, validate_settings
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +20,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} v{settings.VERSION}")
+    try:
+        validate_settings()
+    except RuntimeError as e:
+        logger.critical(f"Configuration validation failed: {e}")
+        yield
+        return
     try:
         await init_db()
         logger.info("Database initialized")
@@ -90,11 +98,15 @@ async def wrap_api_response(request: Request, call_next):
     content_type = response.headers.get("content-type", "")
     if not content_type.startswith("application/json"):
         return response
+    body: bytes = b""
     try:
-        body = response.body if isinstance(response.body, bytes) else b""
+        body = response.body  # property on Starlette Response
     except Exception:
-        return response
-    if not body:
+        try:
+            body = response._body  # fallback for newer Starlette internals
+        except AttributeError:
+            return response
+    if not isinstance(body, bytes) or not body:
         return response
     import json
     try:
@@ -132,6 +144,50 @@ async def health():
         "version": settings.VERSION,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning(f"Validation error on {request.method} {request.url.path}: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Validation error",
+            "errors": exc.errors(),
+            "request_id": getattr(request.state, "request_id", "unknown"),
+        },
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, "request_id": getattr(request.state, "request_id", "unknown")},
+    )
+
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError):
+    logger.error(f"Integrity error on {request.method} {request.url.path}: {exc}")
+    detail = "Database constraint violation"
+    if "hashed_password" in str(exc):
+        detail = "Database schema is outdated. Please run database migrations."
+    elif "unique" in str(exc).lower() or "duplicate" in str(exc).lower():
+        detail = "Resource already exists"
+    return JSONResponse(
+        status_code=409,
+        content={"detail": detail, "request_id": getattr(request.state, "request_id", "unknown")},
+    )
+
+
+@app.exception_handler(DataError)
+async def data_error_handler(request: Request, exc: DataError):
+    logger.error(f"Data error on {request.method} {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": "Invalid data format", "request_id": getattr(request.state, "request_id", "unknown")},
+    )
 
 
 @app.exception_handler(Exception)

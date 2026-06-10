@@ -69,7 +69,7 @@ export function SignupScreen() {
     e.preventDefault()
     if (!validate()) return
     try {
-      await signup({ email, password, name, phone: phone || undefined })
+      await signup({ email, password, name })
       navigate('/')
     } catch { /* handled by store */ }
   }

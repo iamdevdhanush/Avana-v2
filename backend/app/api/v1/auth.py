@@ -1,10 +1,12 @@
 import uuid
+import logging
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status
-from jose import jwt
+from jose import jwt, JWTError
 from sqlalchemy import select, delete
+from sqlalchemy.exc import IntegrityError, DataError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -21,22 +23,47 @@ from app.schemas.auth import (
     EmergencyContactResponse,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 def _create_token(user_id: str) -> str:
+    if not settings.SECRET_KEY:
+        logger.critical("SECRET_KEY is not configured")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Server configuration error: JWT secret is not set",
+        )
     expire = datetime.now(timezone.utc) + timedelta(hours=settings.JWT_EXPIRATION_HOURS)
     payload = {"sub": user_id, "exp": expire, "iat": datetime.now(timezone.utc)}
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    try:
+        return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    except JWTError as e:
+        logger.exception("JWT encoding failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate authentication token",
+        )
 
 
 @router.post("/signup", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
-    existing = await db.execute(select(User).where(User.email == body.email))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+    try:
+        existing = await db.execute(select(User).where(User.email == body.email))
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Database error checking existing email")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error during signup")
 
-    hashed = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt())
+    try:
+        hashed = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt())
+    except Exception as e:
+        logger.exception("Password hashing failed")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Password processing error")
 
     user = User(
         id=uuid.uuid4(),
@@ -50,9 +77,38 @@ async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
         updated_at=datetime.now(timezone.utc),
     )
     db.add(user)
-    await db.flush()
 
-    token = _create_token(str(user.id))
+    try:
+        await db.flush()
+    except IntegrityError as e:
+        await db.rollback()
+        if "hashed_password" in str(e):
+            logger.critical("hashed_password column missing from users table; run alembic migration")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database schema is outdated. Please run database migrations.",
+            )
+        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+        logger.exception("Integrity error during user creation")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user data")
+    except DataError as e:
+        await db.rollback()
+        logger.exception("Data error during user creation")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid data format")
+    except Exception as e:
+        await db.rollback()
+        logger.exception("Unexpected database error during user creation")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create user")
+
+    try:
+        token = _create_token(str(user.id))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Token generation failed after user creation")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to generate token")
+
     return AuthResponse(
         token=token,
         user=UserResponse(
@@ -68,13 +124,32 @@ async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login", response_model=AuthResponse)
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == body.email))
-    user = result.scalar_one_or_none()
-    if not user or not bcrypt.checkpw(body.password.encode("utf-8"), user.hashed_password.encode("utf-8")):
+    try:
+        result = await db.execute(select(User).where(User.email == body.email))
+        user = result.scalar_one_or_none()
+    except Exception as e:
+        logger.exception("Database error during login lookup")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error during login")
+
+    if not user or not user.hashed_password:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
+    try:
+        if not bcrypt.checkpw(body.password.encode("utf-8"), user.hashed_password.encode("utf-8")):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Password verification failed")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Password verification error")
+
     user.last_login = datetime.now(timezone.utc)
-    await db.flush()
+    try:
+        await db.flush()
+    except Exception as e:
+        await db.rollback()
+        logger.exception("Failed to update last_login")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update user")
 
     token = _create_token(str(user.id))
     return AuthResponse(
