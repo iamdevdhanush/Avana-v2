@@ -1,7 +1,7 @@
 # Avana V2 — Render Blueprint
 # One-click deploy: https://render.com/deploy?blueprint-url=...
 #
-# Requires: GEMINI_API_KEY set as secret env var
+# Requires: GEMINI_API_KEY set as secret env var (prompted on first deploy)
 # Optional: OPENAI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY
 
 services:
@@ -11,8 +11,9 @@ services:
     runtime: python
     region: singapore
     plan: starter
-    buildCommand: cd backend && pip install -r requirements.txt
-    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       - key: APP_NAME
@@ -44,12 +45,18 @@ services:
       - key: REDIS_URL
         fromService:
           name: avana-v2-redis
-          type: redis
+          type: keyvalue
           property: connectionString
       - key: CELERY_BROKER_URL
-        value: ${REDIS_URL}/1
+        fromService:
+          name: avana-v2-redis
+          type: keyvalue
+          property: connectionString
       - key: CELERY_RESULT_BACKEND
-        value: ${REDIS_URL}/2
+        fromService:
+          name: avana-v2-redis
+          type: keyvalue
+          property: connectionString
       - key: SECRET_KEY
         generateValue: true
       - key: JWT_ALGORITHM
@@ -71,7 +78,7 @@ services:
       - key: RATE_LIMIT_WINDOW
         value: "60"
       - key: CORS_ORIGINS
-        value: https://avana-v2-frontend.onrender.com,http://localhost:5173
+        value: https://avana-v2.vercel.app,https://avana-v2-frontend.onrender.com,http://localhost:5173
       - key: NEWS_SCRAPE_INTERVAL_MINUTES
         value: "360"
       - key: AGENT_RUN_INTERVAL_MINUTES
@@ -85,11 +92,10 @@ services:
     runtime: python
     region: singapore
     plan: starter
-    buildCommand: cd backend && pip install -r requirements.txt
-    startCommand: cd backend && celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
     envVars:
-      - key: APP_NAME
-        value: Avana V2 - Celery Worker
       - key: POSTGRES_USER
         fromDatabase:
           name: avana-v2-db
@@ -113,23 +119,21 @@ services:
       - key: REDIS_URL
         fromService:
           name: avana-v2-redis
-          type: redis
+          type: keyvalue
           property: connectionString
       - key: CELERY_BROKER_URL
-        value: ${REDIS_URL}/1
+        fromService:
+          name: avana-v2-redis
+          type: keyvalue
+          property: connectionString
       - key: CELERY_RESULT_BACKEND
-        value: ${REDIS_URL}/2
+        fromService:
+          name: avana-v2-redis
+          type: keyvalue
+          property: connectionString
       - key: SECRET_KEY
         generateValue: true
       - key: GEMINI_API_KEY
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-      - key: SUPABASE_SERVICE_KEY
         sync: false
       - key: NEWS_SCRAPE_INTERVAL_MINUTES
         value: "360"
@@ -144,43 +148,56 @@ services:
     runtime: python
     region: singapore
     plan: starter
-    buildCommand: cd backend && pip install -r requirements.txt
-    startCommand: cd backend && celery -A app.tasks.celery_app beat --loglevel=info
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A app.tasks.celery_app beat --loglevel=info
     envVars:
       - key: REDIS_URL
         fromService:
           name: avana-v2-redis
-          type: redis
+          type: keyvalue
           property: connectionString
       - key: CELERY_BROKER_URL
-        value: ${REDIS_URL}/1
+        fromService:
+          name: avana-v2-redis
+          type: keyvalue
+          property: connectionString
       - key: CELERY_RESULT_BACKEND
-        value: ${REDIS_URL}/2
+        fromService:
+          name: avana-v2-redis
+          type: keyvalue
+          property: connectionString
       - key: SECRET_KEY
         generateValue: true
       - key: GEMINI_API_KEY
         sync: false
 
-databases:
-  # ── PostgreSQL + PostGIS ───────────────────────────────────────────────────
-  - name: avana-v2-db
-    plan: starter
-    region: singapore
-    databaseName: avana_v2
-    postgresMajorVersion: 16
-    ipAllowList: []  # allow all (Render internal)
-    postDeploy: |
-      CREATE EXTENSION IF NOT EXISTS postgis;
-      CREATE EXTENSION IF NOT EXISTS postgis_topology;
-      CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
-      CREATE EXTENSION IF NOT EXISTS pg_trgm;
-    # Note: Render auto-creates the DB. Run migrations after deploy via:
-    #   alembic upgrade head
-    # Add as a post-deploy build command once supported, or run manually.
+  # ── React / Vite Frontend (Static Site) ────────────────────────────────────
+  - type: web
+    name: avana-v2-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://avana-v2-backend.onrender.com/api/v1
 
-redis:
-  # ── Redis (broker + cache) ─────────────────────────────────────────────────
-  - name: avana-v2-redis
+  # ── Redis (Key Value) ──────────────────────────────────────────────────────
+  - type: keyvalue
+    name: avana-v2-redis
     plan: starter
     region: singapore
     maxmemoryPolicy: allkeys-lru
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: allow all (private network)
+
+databases:
+  # ── PostgreSQL + PostGIS ───────────────────────────────────────────────────
+  - name: avana-v2-db
+    plan: basic-256mb
+    region: singapore
+    databaseName: avana_v2
+    postgresMajorVersion: "16"
+    ipAllowList: []
