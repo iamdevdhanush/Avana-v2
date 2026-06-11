@@ -189,12 +189,43 @@ async def geocode_incidents(incidents: List[dict]) -> List[dict]:
     return incidents
 
 
+def _title_similarity(t1: str, t2: str) -> float:
+    if not t1 or not t2:
+        return 0.0
+    t1_words = set(t1.lower().split())
+    t2_words = set(t2.lower().split())
+    if not t1_words or not t2_words:
+        return 0.0
+    intersection = t1_words & t2_words
+    union = t1_words | t2_words
+    return len(intersection) / len(union)
+
+
+def _is_duplicate(candidate: dict, existing_title: str, existing_lat: float, existing_lng: float, existing_date) -> bool:
+    title = (candidate.get("article_title") or candidate.get("title") or "").lower()
+    loc = candidate.get("location", "").lower()
+    lat = candidate.get("latitude")
+    lng = candidate.get("longitude")
+    title_sim = _title_similarity(title, existing_title.lower())
+    if title_sim >= 0.6:
+        return True
+    if title_sim >= 0.3 and lat and existing_lat and lng and existing_lng:
+        loc_dist = ((lat - existing_lat) ** 2 + (lng - existing_lng) ** 2) ** 0.5
+        if loc_dist < 0.1:
+            return True
+    return False
+
+
 async def save_incidents(incidents: List[dict]) -> dict:
     saved = 0
     skipped = 0
     errors = []
     factory = get_session_factory()
     async with factory() as session:
+        existing = await session.execute(
+            select(Incident).where(Incident.source == IncidentSource.NEWS).limit(500)
+        )
+        existing_incidents = existing.scalars().all()
         for inc in incidents:
             lat = inc.get("latitude")
             lng = inc.get("longitude")
@@ -209,6 +240,20 @@ async def save_incidents(incidents: List[dict]) -> dict:
                 if result.scalar_one_or_none():
                     skipped += 1
                     continue
+            is_dup = False
+            for existing_inc in existing_incidents:
+                if _is_duplicate(
+                    inc,
+                    existing_inc.title or "",
+                    existing_inc.latitude or 0,
+                    existing_inc.longitude or 0,
+                    existing_inc.incident_date,
+                ):
+                    is_dup = True
+                    break
+            if is_dup:
+                skipped += 1
+                continue
             try:
                 itype_str = inc.get("incident_type", "other")
                 try:

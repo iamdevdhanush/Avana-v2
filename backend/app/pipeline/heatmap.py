@@ -1,13 +1,7 @@
-"""
-Heatmap Engine — Simplified.
-Generates grid points within bounds and scores each via the risk engine.
-Stores results to risk_scores table.
-"""
-
 import logging
 import math
 from datetime import datetime, timezone
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 from sqlalchemy import text
 
 from app.database import get_session_factory
@@ -15,7 +9,7 @@ from app.pipeline.risk import score_location
 
 logger = logging.getLogger(__name__)
 
-GRID_SIZE_DEGREES = 0.009  # ~1km
+GRID_SIZE_DEGREES = 0.009
 
 
 def _generate_grid(sw_lat: float, sw_lng: float, ne_lat: float, ne_lng: float) -> List[Tuple[float, float]]:
@@ -30,6 +24,132 @@ def _generate_grid(sw_lat: float, sw_lng: float, ne_lat: float, ne_lng: float) -
     return points
 
 
+async def _score_points_batch(points: List[Tuple[float, float]]) -> List[dict]:
+    if not points:
+        return []
+    radius_m = 1000
+    values_clause = ",".join(
+        f"({lat},{lng})" for lat, lng in points
+    )
+    async with get_session_factory()() as session:
+        hist = await session.execute(
+            text(f"""
+                SELECT pt.lat, pt.lng,
+                       COUNT(inc.id) as cnt,
+                       COALESCE(AVG(CASE
+                           WHEN inc.severity = 'critical' THEN 50
+                           WHEN inc.severity = 'high' THEN 30
+                           WHEN inc.severity = 'medium' THEN 15
+                           WHEN inc.severity = 'low' THEN 5
+                           ELSE 10
+                       END), 0) as avg_sev
+                FROM (VALUES {values_clause}) AS pt(lat, lng)
+                LEFT JOIN incidents inc
+                    ON ST_DWithin(
+                        inc.geom::geography,
+                        ST_SetSRID(ST_MakePoint(pt.lng, pt.lat), 4326)::geography,
+                        {radius_m}
+                    ) AND inc.status::text != 'dismissed'
+                GROUP BY pt.lat, pt.lng
+            """)
+        )
+        hist_rows = {(float(r[0]), float(r[1])): {"cnt": int(r[2]), "sev": float(r[3])} for r in hist.fetchall()}
+
+        recent = await session.execute(
+            text(f"""
+                SELECT pt.lat, pt.lng, COUNT(inc.id) as cnt
+                FROM (VALUES {values_clause}) AS pt(lat, lng)
+                LEFT JOIN incidents inc
+                    ON ST_DWithin(
+                        inc.geom::geography,
+                        ST_SetSRID(ST_MakePoint(pt.lng, pt.lat), 4326)::geography,
+                        {radius_m}
+                    ) AND inc.created_at >= NOW() - INTERVAL '7 days'
+                    AND inc.status::text != 'dismissed'
+                GROUP BY pt.lat, pt.lng
+            """)
+        )
+        recent_rows = {(float(r[0]), float(r[1])): int(r[2]) for r in recent.fetchall()}
+
+        radius_police = 2000
+        radius_hosp = 2000
+        police = await session.execute(
+            text(f"""
+                SELECT pt.lat, pt.lng, COUNT(ps.id) as cnt
+                FROM (VALUES {values_clause}) AS pt(lat, lng)
+                LEFT JOIN police_stations ps
+                    ON ST_DWithin(
+                        ps.geom::geography,
+                        ST_SetSRID(ST_MakePoint(pt.lng, pt.lat), 4326)::geography,
+                        {radius_police}
+                    )
+                GROUP BY pt.lat, pt.lng
+            """)
+        )
+        police_rows = {(float(r[0]), float(r[1])): int(r[2]) for r in police.fetchall()}
+
+        hospitals = await session.execute(
+            text(f"""
+                SELECT pt.lat, pt.lng, COUNT(h.id) as cnt
+                FROM (VALUES {values_clause}) AS pt(lat, lng)
+                LEFT JOIN hospitals h
+                    ON ST_DWithin(
+                        h.geom::geography,
+                        ST_SetSRID(ST_MakePoint(pt.lng, pt.lat), 4326)::geography,
+                        {radius_hosp}
+                    )
+                GROUP BY pt.lat, pt.lng
+            """)
+        )
+        hospital_rows = {(float(r[0]), float(r[1])): int(r[2]) for r in hospitals.fetchall()}
+
+    results = []
+    current_hour = datetime.now(timezone.utc).hour
+    is_night = current_hour >= 21 or current_hour < 6
+    night_penalty = 15.0 if is_night else 0.0
+
+    for lat, lng in points:
+        h = hist_rows.get((lat, lng), {"cnt": 0, "sev": 0})
+        r_cnt = recent_rows.get((lat, lng), 0)
+        p_cnt = police_rows.get((lat, lng), 0)
+        h_cnt = hospital_rows.get((lat, lng), 0)
+
+        density_factor = min(1.0, h["cnt"] / 50.0)
+        severity_factor = h["sev"] / 50.0 if h["sev"] > 0 else 0
+        historical_risk = (density_factor * 0.6 + severity_factor * 0.4) * 100.0
+        recent_impact = min(30.0, r_cnt * 8.0)
+        sev_penalty = min(25.0, r_cnt * 3.0)
+        police_bonus = min(10.0, p_cnt * 3.33)
+        hospital_bonus = min(5.0, h_cnt * 1.67)
+        safety_bonus = police_bonus + hospital_bonus
+
+        raw_score = (
+            historical_risk * 0.4
+            + recent_impact * 0.2
+            + night_penalty * 0.15
+            + sev_penalty * 0.15
+            - safety_bonus * 0.1
+        )
+        score = max(0.0, min(100.0, raw_score))
+
+        if score <= 25:
+            category = "safe"
+        elif score <= 50:
+            category = "moderate"
+        elif score <= 75:
+            category = "high_risk"
+        else:
+            category = "critical"
+
+        results.append({
+            "latitude": lat,
+            "longitude": lng,
+            "score": round(score, 2),
+            "category": category,
+        })
+    return results
+
+
 async def generate_heatmap_for_bounds(
     sw_lat: float, sw_lng: float,
     ne_lat: float, ne_lng: float,
@@ -37,32 +157,24 @@ async def generate_heatmap_for_bounds(
 ) -> dict:
     grid = _generate_grid(sw_lat, sw_lng, ne_lat, ne_lng)
     logger.info(f"Generating heatmap for {len(grid)} grid points")
-    results = []
-    batch_size = 20
+    all_results = []
+    batch_size = 100
     for i in range(0, len(grid), batch_size):
         batch = grid[i:i + batch_size]
-        for lat, lng in batch:
-            try:
-                sr = await score_location(lat, lng)
-                results.append({
-                    "latitude": lat,
-                    "longitude": lng,
-                    "score": sr["score"],
-                    "category": sr["category"],
-                    "factors": sr["factors"],
+        try:
+            batch_results = await _score_points_batch(batch)
+            all_results.extend(batch_results)
+        except Exception as e:
+            logger.error(f"Batch heatmap scoring failed at offset {i}: {e}")
+            for lat, lng in batch:
+                all_results.append({
+                    "latitude": lat, "longitude": lng,
+                    "score": 50.0, "category": "moderate",
                 })
-            except Exception as e:
-                logger.warning(f"Heatmap point failed ({lat}, {lng}): {e}")
-                results.append({
-                    "latitude": lat,
-                    "longitude": lng,
-                    "score": 50.0,
-                    "category": "Moderate",
-                    "factors": {},
-                })
+
     factory = get_session_factory()
     async with factory() as session:
-        for r in results:
+        for r in all_results:
             try:
                 await session.execute(
                     text("""
@@ -79,10 +191,10 @@ async def generate_heatmap_for_bounds(
                      "score": r["score"], "cat": r["category"]},
                 )
             except Exception as e:
-                logger.error(f"Failed to save heatmap point: {e}")
+                logger.error(f"Failed to save heatmap point ({r['latitude']}, {r['longitude']}): {e}")
         await session.commit()
     return {
-        "points_generated": len(results),
+        "points_generated": len(all_results),
         "bounds": {"sw_lat": sw_lat, "sw_lng": sw_lng, "ne_lat": ne_lat, "ne_lng": ne_lng},
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }

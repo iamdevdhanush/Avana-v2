@@ -2,7 +2,7 @@ import uuid
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError, DataError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -150,7 +150,12 @@ async def refresh_token(body: dict, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
-async def logout(user: User = Depends(require_user)):
+async def logout(request: Request, user: User = Depends(require_user)):
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        blacklist_token(token)
+        logger.info(f"User {user.id} logged out, token blacklisted")
     return {"message": "Logged out successfully"}
 
 

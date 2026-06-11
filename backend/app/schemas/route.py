@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 from pydantic import BaseModel
 
@@ -19,6 +19,7 @@ class RouteSegment(BaseModel):
     safety_score: float
     risk_category: str
     distance_m: float
+    risk_factors: Optional[dict] = None
 
 
 class RouteOption(BaseModel):
@@ -36,3 +37,4 @@ class RouteResponse(BaseModel):
     safest: RouteOption
     fastest: RouteOption
     balanced: RouteOption
+    explanation: Optional[str] = None
