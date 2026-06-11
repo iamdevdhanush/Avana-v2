@@ -158,3 +158,17 @@ async def debug_env():
         "DEBUG": settings.DEBUG,
         "CORS_ORIGINS": settings.CORS_ORIGINS,
     }
+
+
+@app.get("/debug/db")
+async def debug_db():
+    from app.database import get_engine
+    from sqlalchemy import text
+    try:
+        engine = get_engine()
+        async with engine.connect() as conn:
+            result = await conn.execute(text("SELECT 1"))
+            val = result.scalar()
+            return {"status": "connected", "test_query": val}
+    except Exception as e:
+        return {"status": "error", "detail": str(e), "type": type(e).__name__}
