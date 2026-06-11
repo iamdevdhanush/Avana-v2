@@ -190,6 +190,11 @@ async def health_gemini():
         result = gemini_service.generate("Respond with only the word: OK")
         if result and "OK" in result:
             return {"status": "healthy", "model": "gemini-2.0-flash"}
+        if not result and gemini_service._init_error and "quota" in gemini_service._init_error.lower():
+            return JSONResponse(
+                status_code=503,
+                content={"status": "unhealthy", "error": "Gemini daily quota exhausted — try again tomorrow or upgrade to a paid plan"},
+            )
         return JSONResponse(
             status_code=503,
             content={"status": "unhealthy", "error": "Gemini test request returned unexpected response"},

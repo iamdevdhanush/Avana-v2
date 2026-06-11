@@ -103,7 +103,7 @@ async def admin_dashboard(
         for r in by_type.fetchall()
     ]
 
-    thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
     risk_trend_rows = await db.execute(
         text("SELECT DATE(created_at) as dt, AVG(confidence_score) FROM incidents WHERE created_at >= :start GROUP BY dt ORDER BY dt"),
         {"start": thirty_days_ago},
