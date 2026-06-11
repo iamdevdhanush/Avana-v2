@@ -30,38 +30,57 @@ class NominatimService:
     async def geocode(self, query: str) -> Optional[dict]:
         if not query or not query.strip():
             return None
-        await self._rate_limit()
-        try:
-            response = await self.client.get(
-                f"{self.BASE_URL}/search",
-                params={"q": query, "format": "json", "limit": 1, "addressdetails": 1},
-            )
-            response.raise_for_status()
-            data = response.json()
-            if data and len(data) > 0:
-                result = data[0]
-                return {
-                    "lat": float(result.get("lat", 0)),
-                    "lng": float(result.get("lon", 0)),
-                    "display_name": result.get("display_name", ""),
-                    "place_id": result.get("place_id", ""),
-                    "osm_type": result.get("osm_type", ""),
-                    "osm_id": result.get("osm_id", ""),
-                    "category": result.get("category", ""),
-                    "type": result.get("type", ""),
-                    "importance": result.get("importance", 0),
-                }
-            logger.info(f"No geocoding results for: {query}")
-            return None
-        except httpx.TimeoutException:
-            logger.warning(f"Geocoding timeout for: {query}")
-            return None
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Geocoding HTTP error for '{query}': {e.response.status_code}")
-            return None
-        except Exception as e:
-            logger.error(f"Geocoding error for '{query}': {e}")
-            return None
+        last_exc = None
+        for attempt in range(1, 4):
+            try:
+                await self._rate_limit()
+                response = await self.client.get(
+                    f"{self.BASE_URL}/search",
+                    params={"q": query, "format": "json", "limit": 1, "addressdetails": 1},
+                )
+                response.raise_for_status()
+                data = response.json()
+                if data and len(data) > 0:
+                    result = data[0]
+                    return {
+                        "lat": float(result.get("lat", 0)),
+                        "lng": float(result.get("lon", 0)),
+                        "display_name": result.get("display_name", ""),
+                        "place_id": result.get("place_id", ""),
+                        "osm_type": result.get("osm_type", ""),
+                        "osm_id": result.get("osm_id", ""),
+                        "category": result.get("category", ""),
+                        "type": result.get("type", ""),
+                        "importance": result.get("importance", 0),
+                    }
+                logger.info(f"No geocoding results for: {query}")
+                return None
+            except httpx.TimeoutException as e:
+                last_exc = e
+                if attempt < 3:
+                    delay = 1.0 * (2 ** (attempt - 1))
+                    logger.warning(f"Nominatim timeout (attempt {attempt}/3): {query}. Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                else:
+                    logger.warning(f"Nominatim timeout after 3 attempts: {query}")
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in (429, 503, 502) and attempt < 3:
+                    delay = 1.0 * (2 ** (attempt - 1))
+                    logger.warning(f"Nominatim HTTP {e.response.status_code} (attempt {attempt}/3): {query}. Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                    continue
+                logger.error(f"Geocoding HTTP error for '{query}': {e.response.status_code}")
+                return None
+            except Exception as e:
+                last_exc = e
+                if attempt < 3:
+                    delay = 1.0 * (2 ** (attempt - 1))
+                    logger.warning(f"Nominatim error (attempt {attempt}/3): {e}. Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"Geocoding error for '{query}': {e}")
+                    return None
+        return None
 
     async def reverse_geocode(self, lat: float, lng: float) -> Optional[dict]:
         await self._rate_limit()

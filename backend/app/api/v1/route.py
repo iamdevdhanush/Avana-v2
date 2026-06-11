@@ -19,20 +19,44 @@ OSRM_BASE_URL = "https://router.project-osrm.org"
 
 
 async def _fetch_route(source_lat: float, source_lng: float, dest_lat: float, dest_lng: float) -> dict:
+    import asyncio
     import httpx
     url = (
         f"{OSRM_BASE_URL}/route/v1/driving/"
         f"{source_lng},{source_lat};{dest_lng},{dest_lat}"
         f"?overview=full&geometries=geojson&steps=true&alternatives=3"
     )
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get(url)
-        if resp.status_code != 200:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Route service unavailable",
-            )
-        return resp.json()
+    last_exc = None
+    for attempt in range(1, 4):
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(url)
+                if resp.status_code != 200:
+                    if resp.status_code in (429, 503, 502) and attempt < 3:
+                        delay = 1.0 * (2 ** (attempt - 1))
+                        logger.warning(f"OSRM HTTP {resp.status_code} (attempt {attempt}/3). Retrying in {delay}s...")
+                        await asyncio.sleep(delay)
+                        continue
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail=f"Route service returned {resp.status_code}",
+                    )
+                return resp.json()
+        except HTTPException:
+            raise
+        except Exception as e:
+            last_exc = e
+            if attempt < 3:
+                delay = 1.0 * (2 ** (attempt - 1))
+                logger.warning(f"OSRM error (attempt {attempt}/3): {e}. Retrying in {delay}s...")
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"OSRM failed after 3 attempts: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Route service unavailable after 3 retries: {str(e)}",
+                )
+    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Route service unavailable")
 
 
 def _osrm_to_route_option(route_data: dict, route_type: str) -> RouteOption:
