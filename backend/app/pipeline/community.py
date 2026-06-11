@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import List
 from sqlalchemy import text
 
-from app.database import async_session_factory
+from app.database import get_session_factory
 from app.models.incident import (
     Incident, IncidentType, IncidentSeverity,
     IncidentStatus, IncidentSource,
@@ -24,7 +24,8 @@ DUPLICATE_RADIUS_METERS = 100
 
 
 async def process_pending_reports() -> dict:
-    async with async_session_factory() as session:
+    factory = get_session_factory()
+    async with factory() as session:
         result = await session.execute(
             text("""
                 SELECT id, user_id, incident_type, severity, latitude, longitude,
@@ -94,7 +95,8 @@ async def process_pending_reports() -> dict:
     dup_ids = []
     verified_ids = []
     pending_ids = []
-    async with async_session_factory() as session:
+    factory = get_session_factory()
+    async with factory() as session:
         for report in classified:
             lat = report.get("latitude")
             lng = report.get("longitude")

@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -35,9 +35,10 @@ async def test_news_intelligence_extract():
 @pytest.mark.asyncio
 @pytest.mark.agents
 async def test_risk_scoring_calculation():
-    with patch("app.pipeline.risk.async_session_factory") as mock_session_factory:
+    with patch("app.pipeline.risk.get_session_factory") as mock_get_factory:
         mock_session = AsyncMock()
-        mock_session_factory.return_value.__aenter__.return_value = mock_session
+        mock_factory = MagicMock(return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_session), __aexit__=AsyncMock()))
+        mock_get_factory.return_value = mock_factory
 
         mock_hist = AsyncMock()
         mock_hist.fetchone.return_value = (5, 20.0)

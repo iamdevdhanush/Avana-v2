@@ -15,7 +15,7 @@ from typing import List, Optional
 from sqlalchemy import select, text
 from geoalchemy2.elements import WKTElement
 
-from app.database import async_session_factory
+from app.database import get_session_factory
 from app.models.incident import (
     Incident, IncidentType, IncidentSeverity,
     IncidentSource, IncidentStatus,
@@ -160,7 +160,8 @@ async def save_incidents(incidents: List[dict]) -> dict:
     saved = 0
     skipped = 0
     errors = []
-    async with async_session_factory() as session:
+    factory = get_session_factory()
+    async with factory() as session:
         for inc in incidents:
             lat = inc.get("latitude")
             lng = inc.get("longitude")

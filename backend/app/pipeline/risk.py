@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import text
 
-from app.database import async_session_factory
+from app.database import get_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ NIGHT_END_HOUR = 6
 
 
 async def score_location(lat: float, lng: float, district: Optional[str] = None) -> dict:
-    async with async_session_factory() as session:
+    async with get_session_factory()() as session:
         hist = await session.execute(
             text("""
                 SELECT COUNT(*) as cnt,
@@ -145,7 +145,7 @@ async def score_location(lat: float, lng: float, district: Optional[str] = None)
 
 
 async def recalculate_all_risk_scores() -> dict:
-    async with async_session_factory() as session:
+    async with get_session_factory()() as session:
         result = await session.execute(
             text("SELECT DISTINCT latitude, longitude FROM incidents WHERE latitude IS NOT NULL")
         )
@@ -158,7 +158,7 @@ async def recalculate_all_risk_scores() -> dict:
     for lat, lng in points:
         try:
             result = await score_location(lat, lng)
-            async with async_session_factory() as session:
+            async with get_session_factory()() as session:
                 await session.execute(
                     text("""
                         INSERT INTO risk_scores
