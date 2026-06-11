@@ -30,26 +30,18 @@ _CITY_SOURCES = [
     {"city": "Bengaluru", "feeds": [
         "https://timesofindia.indiatimes.com/rssfeeds/-2128838597.cms",
         "https://www.thehindu.com/news/cities/bangalore/feeder/default.rss",
-        "https://www.deccanherald.com/rss/karnataka/bengaluru.rss",
+        "https://www.deccanherald.com/feed",
     ]},
     {"city": "Mysuru", "feeds": [
-        "https://www.thehindu.com/news/national/karnataka/mysore/feeder/default.rss",
         "https://timesofindia.indiatimes.com/rssfeeds/1078976505.cms",
     ]},
     {"city": "Mangaluru", "feeds": [
-        "https://www.thehindu.com/news/national/karnataka/mangalore/feeder/default.rss",
         "https://timesofindia.indiatimes.com/rssfeeds/2452244.cms",
-    ]},
-    {"city": "Hubballi", "feeds": [
-        "https://www.thehindu.com/news/national/karnataka/hubli/feeder/default.rss",
-    ]},
-    {"city": "Belagavi", "feeds": [
-        "https://www.thehindu.com/news/national/karnataka/belagavi/feeder/default.rss",
     ]},
     {"city": "Karnataka", "feeds": [
         "https://www.thehindu.com/news/national/karnataka/feeder/default.rss",
         "https://timesofindia.indiatimes.com/rssfeeds/2962392.cms",
-        "https://www.deccanherald.com/rss/karnataka.rss",
+        "https://www.deccanherald.com/feed",
     ]},
 ]
 
