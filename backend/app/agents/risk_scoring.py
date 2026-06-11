@@ -60,8 +60,8 @@ async def load_context(state: RiskScoreState) -> dict:
                     AND status::text != 'dismissed'
                     """),
                     {"lng": lng, "lat": lat, "radius": HISTORICAL_RADIUS_METERS},
-                )
-                row = historical_count.fetchone()
+            )
+            row = historical_count.fetchone()
             factors["historical_incident_count"] = int(row[0]) if row else 0
             factors["avg_severity_score"] = float(row[1]) if row else 0.0
             recent_count = await session.execute(
