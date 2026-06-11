@@ -62,20 +62,20 @@ async def admin_dashboard(
     sos = await db.execute(text("SELECT COUNT(*) FROM sos_events"))
     sos_events = sos.scalar() or 0
 
-    verified = await db.execute(text("SELECT COUNT(*) FROM incidents WHERE status = 'verified'"))
+    verified = await db.execute(text("SELECT COUNT(*) FROM incidents WHERE status::text = 'verified'"))
     verified_reports = verified.scalar() or 0
 
     by_district = await db.execute(
         text("""
             SELECT district, COUNT(*) as total,
-                   COUNT(*) FILTER (WHERE severity IN ('high','critical')) as high_risk,
-                   COUNT(*) FILTER (WHERE severity = 'medium') as medium_risk,
-                   COUNT(*) FILTER (WHERE severity = 'low') as low_risk,
+                   COUNT(*) FILTER (WHERE severity::text IN ('high','critical')) as high_risk,
+                   COUNT(*) FILTER (WHERE severity::text = 'medium') as medium_risk,
+                   COUNT(*) FILTER (WHERE severity::text = 'low') as low_risk,
                    AVG(CASE
-                       WHEN severity = 'critical' THEN 4
-                       WHEN severity = 'high' THEN 3
-                       WHEN severity = 'medium' THEN 2
-                       WHEN severity = 'low' THEN 1
+                       WHEN severity::text = 'critical' THEN 4
+                       WHEN severity::text = 'high' THEN 3
+                       WHEN severity::text = 'medium' THEN 2
+                       WHEN severity::text = 'low' THEN 1
                        ELSE 0
                    END) as avg_score
             FROM incidents WHERE district IS NOT NULL
@@ -119,7 +119,7 @@ async def admin_dashboard(
     recent_alerts_rows = await db.execute(
         text("""
             SELECT id, incident_type, severity, district, created_at, status
-            FROM incidents WHERE severity IN ('high','critical') AND created_at >= :start
+            FROM incidents WHERE severity::text IN ('high','critical') AND created_at >= :start
             ORDER BY created_at DESC LIMIT 20
         """),
         {"start": thirty_days_ago},

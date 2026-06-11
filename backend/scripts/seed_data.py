@@ -64,6 +64,8 @@ TEST_USER = {
 async def seed():
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     async with engine.begin() as conn:
+        from sqlalchemy import text
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reputation INTEGER DEFAULT 0"))
         await conn.run_sync(Base.metadata.create_all)
 
     async_session = async_sessionmaker(engine, expire_on_commit=False)
@@ -87,7 +89,6 @@ async def seed():
                 updated_at=datetime.now(timezone.utc),
             )
             db.add(user)
-            await db.flush()
             print(f"Admin user created: {ADMIN_USER['email']}")
             print(f"  Password: {ADMIN_USER['password']}")
 
@@ -97,7 +98,7 @@ async def seed():
         if existing_test.scalar_one_or_none():
             print(f"Test user already exists: {TEST_USER['email']}")
         else:
-            user = User(
+            test_user = User(
                 id=uuid.uuid4(),
                 email=TEST_USER["email"],
                 hashed_password=hash_password(TEST_USER["password"]),
@@ -108,10 +109,11 @@ async def seed():
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
             )
-            db.add(user)
-            await db.flush()
+            db.add(test_user)
             print(f"Test user created: {TEST_USER['email']}")
             print(f"  Password: {TEST_USER['password']}")
+
+        await db.commit()
 
     async with async_session() as db:
         for ps in BANGALORE_POLICE_STATIONS:
@@ -138,8 +140,8 @@ async def seed():
                 updated_at=datetime.now(timezone.utc),
             )
             db.add(station)
-            await db.flush()
             print(f"  Police station added: {ps['name']}")
+        await db.commit()
 
     async with async_session() as db:
         for h in BANGALORE_HOSPITALS:
@@ -167,8 +169,8 @@ async def seed():
                 updated_at=datetime.now(timezone.utc),
             )
             db.add(hospital)
-            await db.flush()
             print(f"  Hospital added: {h['name']}")
+        await db.commit()
 
     print("\nSeed complete!")
 

@@ -31,7 +31,7 @@ async def process_pending_reports() -> dict:
                 SELECT id, user_id, incident_type, severity, latitude, longitude,
                        description, confidence_score, reporter_ip, created_at, source
                 FROM safety_reports
-                WHERE status = 'pending'
+                WHERE status::text = 'pending'
                 ORDER BY created_at ASC
                 LIMIT 50
             """)
