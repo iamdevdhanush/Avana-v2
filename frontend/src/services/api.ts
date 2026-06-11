@@ -556,7 +556,7 @@ export const communityApi = {
 
 // ── Admin API ─────────────────────────────────────────────────────────────────
 
-export type PipelineName = 'news' | 'community' | 'heatmap'
+export type PipelineName = 'intelligence' | 'community' | 'risk'
 
 export const adminApi = {
   listUsers: async (p?: { page?: number; page_size?: number }): Promise<{ items: User[]; total: number; page: number; page_size: number }> => {
@@ -655,13 +655,13 @@ export const adminApi = {
     } catch (error) { handleError(error) }
   },
 
-  // Correct endpoint: GET /admin/agents/status
+  // GET /admin/pipeline/status — real backend endpoint
   getAgentStatus: async (): Promise<AgentStatus[]> => {
     try {
-      const { data: raw } = await api.get('/admin/agents/status')
+      const { data: raw } = await api.get('/admin/pipeline/status')
       const inner = (raw.data || raw) as Record<string, unknown>
-      const agents = (inner.agents || []) as Record<string, unknown>[]
-      return agents.map((a) => ({
+      const pipelines = (inner.pipelines || []) as Record<string, unknown>[]
+      return pipelines.map((a) => ({
         name: String(a.name || ''),
         status: (String(a.status || 'idle') as AgentStatus['status']),
         scheduledMinutes: a.schedule_minutes != null ? Number(a.schedule_minutes) : null,
@@ -669,24 +669,25 @@ export const adminApi = {
     } catch (error) { handleError(error) }
   },
 
-  // Correct endpoint: POST /admin/agents/run/{agent_name}
-  // Valid names: news, community, heatmap
+  // POST /admin/pipeline/run/{pipeline_name}
+  // Valid names: intelligence, community, risk
   runAgent: async (agentName: PipelineName): Promise<PipelineRunResult> => {
     try {
-      const { data: raw } = await api.post(`/admin/agents/run/${agentName}`)
+      const { data: raw } = await api.post(`/admin/pipeline/run/${agentName}`)
       const outer = (raw.data || raw) as Record<string, unknown>
-      const result = (outer.result || outer) as Record<string, unknown>
+      const result = (outer.result || {}) as Record<string, unknown>
+      const summary = (result.summary || {}) as Record<string, unknown>
       const runResult: PipelineRunResult = {
         agent: agentName,
-        status: (String(result.status || outer.status || 'completed') as PipelineRunResult['status']),
-        incidentsSaved: Number(result.incidents_saved || 0),
-        errors: (result.errors || []) as string[],
-        durationSeconds: Number(result.duration_seconds || 0),
-        articlesProcessed: Number(result.articles_fetched || 0),
-        ranAt: new Date().toISOString(),
+        status: (String(outer.status || 'completed') as PipelineRunResult['status']),
+        incidentsSaved: Number(summary.incidents_saved || result.incidents_saved || 0),
+        errors: (result.errors || summary.errors || []) as string[],
+        durationSeconds: Number(summary.duration_seconds || result.duration_seconds || 0),
+        articlesProcessed: Number(summary.articles_fetched || result.articles_fetched || 0),
+        ranAt: String(summary.completed_at || new Date().toISOString()),
       }
       // Persist to localStorage so HomeScreen can show last run info
-      if (agentName === 'news') {
+      if (agentName === 'intelligence') {
         localStorage.setItem('avana_last_intel_run', JSON.stringify(runResult))
       }
       return runResult

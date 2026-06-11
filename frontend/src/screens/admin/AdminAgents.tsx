@@ -26,14 +26,14 @@ const AGENT_META: Record<string, {
   runnableName: PipelineName | null
   color: string
 }> = {
-  news_intelligence: {
+  intelligence: {
     label: 'News Intelligence',
     description: 'Fetches RSS feeds, extracts incidents via Gemini AI, geocodes locations',
     icon: Newspaper,
-    runnableName: 'news',
+    runnableName: 'intelligence',
     color: '#A855F7',
   },
-  community_intelligence: {
+  community: {
     label: 'Community Intelligence',
     description: 'Processes community reports and cross-references with known incidents',
     icon: Users,
@@ -42,9 +42,9 @@ const AGENT_META: Record<string, {
   },
   heatmap: {
     label: 'Heatmap Engine',
-    description: 'Recalculates risk scores and regenerates heatmap grid cells',
+    description: 'Regenerates heatmap grid cells (runs automatically after intelligence pipeline)',
     icon: MapPin,
-    runnableName: 'heatmap',
+    runnableName: null,
     color: '#F59E0B',
   },
   risk_scoring: {
