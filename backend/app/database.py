@@ -1,4 +1,5 @@
 import logging
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 from app.config import settings
@@ -32,7 +33,10 @@ class Base(DeclarativeBase):
 
 
 async def get_db() -> AsyncSession:
-    factory = get_session_factory()
+    try:
+        factory = get_session_factory()
+    except RuntimeError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
     session = factory()
     try:
         yield session
