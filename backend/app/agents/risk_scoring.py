@@ -57,7 +57,7 @@ async def load_context(state: RiskScoreState) -> dict:
                         ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
                         :radius
                     )
-AND status::text != 'dismissed'
+                    AND status::text != 'dismissed'
                     """),
                     {"lng": lng, "lat": lat, "radius": HISTORICAL_RADIUS_METERS},
                 )
@@ -74,7 +74,7 @@ AND status::text != 'dismissed'
                         :radius
                     )
                     AND created_at >= NOW() - INTERVAL '7 days'
-AND status::text != 'dismissed'
+                    AND status::text != 'dismissed'
                     """),
                     {"lng": lng, "lat": lat, "radius": RECENT_RADIUS_METERS},
             )
