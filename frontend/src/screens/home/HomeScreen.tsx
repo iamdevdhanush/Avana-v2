@@ -38,7 +38,7 @@ export function HomeScreen() {
         setRecentIncidents(incidents.data)
       }).catch(() => {}).finally(() => setLoading(false))
     }
-  }, [position])
+  }, [position.latitude, position.longitude])
 
   const handleSOS = () => {
     if (!sosConfirming) {

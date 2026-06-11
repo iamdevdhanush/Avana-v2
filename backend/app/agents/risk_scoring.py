@@ -57,11 +57,11 @@ async def load_context(state: RiskScoreState) -> dict:
                         ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
                         :radius
                     )
-                    AND status != 'dismissed'
-                """),
-                {"lng": lng, "lat": lat, "radius": HISTORICAL_RADIUS_METERS},
-            )
-            row = historical_count.fetchone()
+AND status::text != 'dismissed'
+                    """),
+                    {"lng": lng, "lat": lat, "radius": HISTORICAL_RADIUS_METERS},
+                )
+                row = historical_count.fetchone()
             factors["historical_incident_count"] = int(row[0]) if row else 0
             factors["avg_severity_score"] = float(row[1]) if row else 0.0
             recent_count = await session.execute(
@@ -74,9 +74,9 @@ async def load_context(state: RiskScoreState) -> dict:
                         :radius
                     )
                     AND created_at >= NOW() - INTERVAL '7 days'
-                    AND status != 'dismissed'
-                """),
-                {"lng": lng, "lat": lat, "radius": RECENT_RADIUS_METERS},
+AND status::text != 'dismissed'
+                    """),
+                    {"lng": lng, "lat": lat, "radius": RECENT_RADIUS_METERS},
             )
             row2 = recent_count.fetchone()
             factors["recent_incident_count"] = int(row2[0]) if row2 else 0
@@ -192,7 +192,7 @@ async def calculate_severity_penalty(state: RiskScoreState) -> dict:
                         ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
                         :radius
                     )
-                    AND status != 'dismissed'
+                    AND status::text != 'dismissed'
                     GROUP BY severity
                 """),
                 {"lng": lng, "lat": lat, "radius": HISTORICAL_RADIUS_METERS},
