@@ -46,6 +46,9 @@ async def list_incidents(
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
+    if lat is not None and lng is not None:
+        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid coordinates")
     query = select(Incident).order_by(Incident.created_at.desc())
 
     if incident_type:
@@ -108,6 +111,8 @@ async def get_nearby_incidents(
     limit: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),
 ):
+    if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid coordinates")
     radius_meters = radius * 1000
     dialect_name = db.get_bind().dialect.name
     geography_cast = "::geography" if dialect_name == "postgresql" else ""
@@ -226,6 +231,8 @@ async def create_incident(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    if not (-90 <= body.latitude <= 90) or not (-180 <= body.longitude <= 180):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid coordinates")
     incident = Incident(
         id=uuid.uuid4(),
         incident_type=body.incident_type,

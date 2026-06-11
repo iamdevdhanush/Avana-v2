@@ -26,6 +26,7 @@ class CommunityPost(Base):
     tags: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=dict)
     upvotes: Mapped[int] = mapped_column(Integer, default=0)
     downvotes: Mapped[int] = mapped_column(Integer, default=0)
+    voters: Mapped[dict] = mapped_column("voters", JSON().with_variant(JSONB, "postgresql"), default=dict)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     verified_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)

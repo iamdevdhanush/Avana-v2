@@ -1,16 +1,10 @@
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.runner import (
-    run_news_pipeline,
-    run_community_pipeline,
-    run_heatmap_pipeline,
-)
 from app.database import get_db
 from app.dependencies import require_admin
 from app.models.incident import Incident, IncidentStatus
@@ -21,6 +15,10 @@ from app.schemas.admin import (
     UserManagementResponse,
 )
 from app.schemas.analytics import DashboardStats, DistrictStats, TypeStats, TrendPoint, AlertItem
+from app.pipeline.intelligence import run_intelligence_pipeline
+from app.pipeline.community import process_pending_reports
+from app.pipeline.risk import recalculate_all_risk_scores
+from app.pipeline.heatmap import generate_heatmap_for_bounds
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -270,46 +268,44 @@ async def change_user_status(
     return {"id": str(user.id), "is_active": user.is_active}
 
 
-@router.get("/agents/status")
-async def get_agent_status(
+@router.get("/pipeline/status")
+async def get_pipeline_status(
     admin: User = Depends(require_admin),
 ):
     return {
-        "agents": [
-            {"name": "news_intelligence", "status": "idle", "schedule_minutes": 360},
-            {"name": "community_intelligence", "status": "idle", "schedule_minutes": 5},
-            {"name": "risk_scoring", "status": "available", "schedule_minutes": None},
-            {"name": "heatmap", "status": "idle", "schedule_minutes": 360},
-            {"name": "route_intelligence", "status": "available", "schedule_minutes": None},
-            {"name": "safety_recommendation", "status": "available", "schedule_minutes": None},
+        "pipelines": [
+            {"name": "intelligence", "status": "idle", "schedule_minutes": 360},
+            {"name": "community", "status": "idle", "schedule_minutes": 5},
+            {"name": "risk_scoring", "status": "available"},
+            {"name": "heatmap", "status": "idle"},
         ],
         "pipeline": "operational",
     }
 
 
-@router.post("/agents/run/{agent_name}")
-async def run_agent(
-    agent_name: str,
+@router.post("/pipeline/run/{pipeline_name}")
+async def run_pipeline(
+    pipeline_name: str,
     admin: User = Depends(require_admin),
 ):
     pipeline_map = {
-        "news": run_news_pipeline,
-        "community": run_community_pipeline,
-        "heatmap": lambda: run_heatmap_pipeline("district"),
+        "intelligence": run_intelligence_pipeline,
+        "community": process_pending_reports,
+        "risk": recalculate_all_risk_scores,
     }
 
-    runner = pipeline_map.get(agent_name)
+    runner = pipeline_map.get(pipeline_name)
     if not runner:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown agent: {agent_name}. Available: {list(pipeline_map.keys())}",
+            detail=f"Unknown pipeline: {pipeline_name}. Available: {list(pipeline_map.keys())}",
         )
 
     try:
         result = await runner()
-        return {"agent": agent_name, "status": "triggered", "result": result}
+        return {"pipeline": pipeline_name, "status": "triggered", "result": result}
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Agent run failed: {str(e)}",
+            detail=f"Pipeline run failed: {str(e)}",
         )
