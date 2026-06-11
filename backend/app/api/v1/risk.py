@@ -109,15 +109,15 @@ async def get_district_risk(
             SELECT
                 COUNT(*) as total_incidents,
                 AVG(CASE
-                    WHEN severity = 'critical' THEN 4
-                    WHEN severity = 'high' THEN 3
-                    WHEN severity = 'medium' THEN 2
-                    WHEN severity = 'low' THEN 1
+                    WHEN severity::text = 'critical' THEN 4
+                    WHEN severity::text = 'high' THEN 3
+                    WHEN severity::text = 'medium' THEN 2
+                    WHEN severity::text = 'low' THEN 1
                     ELSE 0
                 END) as avg_severity_score,
-                COUNT(*) FILTER (WHERE severity IN ('high', 'critical')) as high_risk_count,
-                COUNT(*) FILTER (WHERE severity = 'medium') as medium_risk_count,
-                COUNT(*) FILTER (WHERE severity = 'low') as low_risk_count
+                COUNT(*) FILTER (WHERE severity::text IN ('high', 'critical')) as high_risk_count,
+                COUNT(*) FILTER (WHERE severity::text = 'medium') as medium_risk_count,
+                COUNT(*) FILTER (WHERE severity::text = 'low') as low_risk_count
             FROM incidents
             WHERE district = :district AND status::text != 'dismissed'
         """),
