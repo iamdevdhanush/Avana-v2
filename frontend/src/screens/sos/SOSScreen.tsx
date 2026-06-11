@@ -346,7 +346,7 @@ export function SOSScreen() {
                 <div
                   className="w-2 h-2 rounded-full shrink-0"
                   style={{
-                    background: ev.status === 'resolved' ? '#22C55E' : ev.status === 'active' ? '#EF4444' : '#F59E0B',
+                    background: ev.status === 'resolved' ? '#22C55E' : ev.status === 'triggered' ? '#EF4444' : '#F59E0B',
                   }}
                 />
                 <div className="flex-1 min-w-0">

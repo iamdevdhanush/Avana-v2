@@ -16,6 +16,8 @@ export interface EmergencyContact {
   name: string
   phone: string
   relationship: string
+  isPrimary: boolean
+  // Keep notifyOnSOS for UI convenience (maps to isPrimary)
   notifyOnSOS: boolean
 }
 
@@ -40,20 +42,22 @@ export enum IncidentSeverity {
   CRITICAL = 'critical',
 }
 
+// Backend enum values: news, user_report (NOT user_reported)
 export enum IncidentSource {
-  USER_REPORTED = 'user_reported',
-  OFFICIAL = 'official',
+  USER_REPORT = 'user_report',
   NEWS = 'news',
+  OFFICIAL = 'official',
   SOCIAL_MEDIA = 'social_media',
   CCTV = 'cctv',
 }
 
+// Backend enum values: pending, verified, dismissed, duplicate, spam
 export enum IncidentStatus {
-  REPORTED = 'reported',
+  PENDING = 'pending',
   VERIFIED = 'verified',
-  INVESTIGATING = 'investigating',
-  RESOLVED = 'resolved',
   DISMISSED = 'dismissed',
+  DUPLICATE = 'duplicate',
+  SPAM = 'spam',
 }
 
 export interface Incident {
@@ -69,6 +73,9 @@ export interface Incident {
     lng: number
     address?: string
   }
+  district?: string
+  city?: string
+  confidenceScore?: number
   reportedBy: string
   reportedAt: string
   updatedAt: string
@@ -115,6 +122,7 @@ export interface SafetyReport {
   updatedAt: string
 }
 
+// Backend SOS statuses: triggered, acknowledged, resolved, false_alarm
 export interface SOSEvent {
   id: string
   userId: string
@@ -123,9 +131,10 @@ export interface SOSEvent {
     lng: number
   }
   timestamp: string
-  status: 'active' | 'responded' | 'resolved' | 'cancelled'
+  status: 'triggered' | 'acknowledged' | 'resolved' | 'false_alarm'
   acknowledgedBy?: string[]
   notes?: string
+  notifiedContacts?: { name: string; phone: string; relationship: string }[]
 }
 
 export interface NewsArticle {
@@ -186,11 +195,13 @@ export interface CommunityPost {
     lng: number
     address?: string
   }
+  postType?: string
   tags: string[]
   upvotes: number
   downvotes: number
   commentCount: number
   isIncident: boolean
+  isVerified: boolean
   createdAt: string
   updatedAt: string
 }
@@ -204,12 +215,27 @@ export interface Comment {
   content: string
   upvotes: number
   createdAt: string
+  replies?: Comment[]
 }
 
 export interface HeatmapPoint {
   lat: number
   lng: number
   weight: number
+  riskCategory?: string
+}
+
+export interface DistrictSummary {
+  district: string
+  avgScore: number
+  totalIncidents: number
+  trend: 'improving' | 'stable' | 'worsening'
+}
+
+export interface HeatmapResponse {
+  points: HeatmapPoint[]
+  generatedAt: string | null
+  districtSummaries: DistrictSummary[]
 }
 
 export interface RouteOption {
@@ -218,6 +244,7 @@ export interface RouteOption {
   duration: number
   distance: number
   safetyScore: number
+  type?: string
 }
 
 export interface RouteSegment {
@@ -225,6 +252,7 @@ export interface RouteSegment {
   endIndex: number
   safetyScore: number
   riskLevel: 'low' | 'medium' | 'high'
+  riskCategory?: string
   incidents: Incident[]
 }
 
@@ -303,4 +331,49 @@ export interface MapBounds {
   south: number
   east: number
   west: number
+}
+
+// ── System Health Types ──────────────────────────────────────────────────────
+
+export type HealthStatus = 'healthy' | 'degraded' | 'offline'
+
+export interface ServiceHealth {
+  name: string
+  status: HealthStatus
+  responseMs?: number
+  checkedAt: string
+  detail?: string
+}
+
+export interface SystemHealth {
+  backend: ServiceHealth
+  routeEngine: ServiceHealth
+  aiService: ServiceHealth
+  lastChecked: string
+}
+
+// ── Agent / Pipeline Types ────────────────────────────────────────────────────
+
+export interface AgentStatus {
+  name: string
+  status: 'idle' | 'running' | 'available'
+  scheduledMinutes: number | null
+}
+
+export interface PipelineRunResult {
+  agent: string
+  status: 'completed' | 'failed' | 'triggered'
+  incidentsSaved?: number
+  errors?: string[]
+  durationSeconds?: number
+  articlesProcessed?: number
+  ranAt: string
+}
+
+export interface LastIntelligenceRun {
+  ranAt: string
+  incidentsSaved: number
+  durationSeconds: number
+  errors: string[]
+  agent: string
 }
