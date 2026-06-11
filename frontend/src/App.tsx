@@ -17,7 +17,7 @@ import { ChatScreen } from '@/screens/chat/ChatScreen'
 import { AdminDashboard } from '@/screens/admin/AdminDashboard'
 import { AdminIncidents } from '@/screens/admin/AdminIncidents'
 import { AdminUsers } from '@/screens/admin/AdminUsers'
-import { AdminAgents } from '@/screens/admin/AdminAgents'
+import { IntelligencePipeline } from '@/screens/admin/IntelligencePipeline'
 import { useAuthStore } from '@/store/authStore'
 import { useEffect, useState } from 'react'
 
@@ -72,7 +72,7 @@ export default function App() {
             <Route path="/analytics" element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>} />
             <Route path="/admin/incidents" element={<ProtectedRoute adminOnly><AdminIncidents /></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute adminOnly><AdminUsers /></ProtectedRoute>} />
-            <Route path="/admin/agents" element={<ProtectedRoute adminOnly><AdminAgents /></ProtectedRoute>} />
+            <Route path="/admin/pipeline" element={<ProtectedRoute adminOnly><IntelligencePipeline /></ProtectedRoute>} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

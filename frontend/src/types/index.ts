@@ -352,16 +352,16 @@ export interface SystemHealth {
   lastChecked: string
 }
 
-// ── Agent / Pipeline Types ────────────────────────────────────────────────────
+// ── Pipeline Types ────────────────────────────────────────────────────────────
 
-export interface AgentStatus {
+export interface PipelineAgent {
   name: string
   status: 'idle' | 'running' | 'available'
   scheduledMinutes: number | null
 }
 
 export interface PipelineRunResult {
-  agent: string
+  name: string
   status: 'completed' | 'failed' | 'triggered'
   incidentsSaved?: number
   errors?: string[]
@@ -375,5 +375,5 @@ export interface LastIntelligenceRun {
   incidentsSaved: number
   durationSeconds: number
   errors: string[]
-  agent: string
+  name: string
 }

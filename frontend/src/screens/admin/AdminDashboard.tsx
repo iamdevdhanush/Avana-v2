@@ -36,7 +36,7 @@ export function AdminDashboard() {
   const [lastIntelRun, setLastIntelRun] = React.useState<LastIntelligenceRun | null>(null)
 
   React.useEffect(() => {
-    // Read last pipeline run from localStorage (set by AdminAgents after a run)
+    // Read last pipeline run from localStorage (set by IntelligencePipeline after a run)
     const stored = localStorage.getItem('avana_last_intel_run')
     if (stored) {
       try { setLastIntelRun(JSON.parse(stored) as LastIntelligenceRun) } catch { /* ignore */ }
@@ -134,14 +134,14 @@ export function AdminDashboard() {
               Moderate
             </button>
             <button
-              onClick={() => navigate('/admin/agents')}
+              onClick={() => navigate('/admin/pipeline')}
               className="px-3 py-2 rounded-xl text-xs font-semibold transition-all"
               style={{
                 background: 'linear-gradient(135deg, #A855F7 0%, #9333EA 100%)',
                 color: '#fff',
               }}
             >
-              Run Agents
+              Run Pipeline
             </button>
           </div>
         </div>
@@ -389,7 +389,7 @@ export function AdminDashboard() {
                 </div>
                 <DataFreshness timestamp={lastIntelRun.ranAt} label="Last Run" warnAfterHours={24} />
                 <button
-                  onClick={() => navigate('/admin/agents')}
+                  onClick={() => navigate('/admin/pipeline')}
                   className="w-full py-2.5 rounded-xl text-xs font-bold text-[#A855F7] border border-[#A855F7]/30 hover:bg-[#A855F7]/10 transition-colors"
                 >
                   Manage Pipeline →
@@ -401,7 +401,7 @@ export function AdminDashboard() {
                 <p className="text-sm font-semibold text-[#6B7280]">Intelligence Pipeline Has Not Run Yet</p>
                 <p className="text-xs text-[#374151] mt-1">No pipeline runs recorded.</p>
                 <button
-                  onClick={() => navigate('/admin/agents')}
+                  onClick={() => navigate('/admin/pipeline')}
                   className="mt-3 px-4 py-2 rounded-xl text-xs font-semibold text-[#A855F7] border border-[#A855F7]/30"
                 >
                   Run Pipeline Now

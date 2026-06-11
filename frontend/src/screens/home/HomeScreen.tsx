@@ -268,7 +268,7 @@ export function HomeScreen() {
               <div>
                 <p className="text-sm font-medium text-[#4B5563]">Intelligence Pipeline Has Not Run Yet</p>
                 <p className="text-xs text-[#374151] mt-0.5">
-                  Ask an admin to run the News Intelligence pipeline.
+                  Ask an admin to run the Intelligence pipeline.
                 </p>
               </div>
             </div>
