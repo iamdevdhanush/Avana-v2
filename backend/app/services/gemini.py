@@ -38,9 +38,9 @@ class GeminiService:
             self._init_error = "GEMINI_API_KEY not configured"
             logger.warning(self._init_error)
             return
-        if not api_key.startswith("AIza"):
+        if len(api_key) < 10:
             self._available = False
-            self._init_error = "GEMINI_API_KEY does not appear valid (should start with AIza)"
+            self._init_error = "GEMINI_API_KEY appears too short"
             logger.error(self._init_error)
             return
         try:
