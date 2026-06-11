@@ -142,7 +142,7 @@ async def get_district_risk(
                 COUNT(*) FILTER (WHERE severity = 'medium') as medium_risk_count,
                 COUNT(*) FILTER (WHERE severity = 'low') as low_risk_count
             FROM incidents
-            WHERE district = :district AND status != 'dismissed'
+            WHERE district = :district AND status::text != 'dismissed'
         """),
         {"district": district},
     )

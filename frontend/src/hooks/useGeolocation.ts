@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 
 interface GeolocationState {
   latitude: number | null
@@ -38,12 +38,12 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
   const watchIdRef = useRef<number | null>(null)
   const mountedRef = useRef(true)
 
-  const defaultOptions: PositionOptions = {
+  const defaultOptions = useMemo<PositionOptions>(() => ({
     enableHighAccuracy: true,
     timeout: 10000,
     maximumAge: 30000,
     ...options,
-  }
+  }), [options])
 
   const handleSuccess = useCallback((pos: GeolocationPosition) => {
     if (!mountedRef.current) return
