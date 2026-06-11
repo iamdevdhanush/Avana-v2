@@ -1,12 +1,3 @@
-/**
- * AdminAgents — Intelligence Pipeline Dashboard
- *
- * Loads real agent statuses from GET /admin/agents/status
- * Triggers real runs via POST /admin/agents/run/{agent_name}
- * Displays real results. Zero mock data.
- *
- * Valid runnable agents: news, community, heatmap
- */
 import * as React from 'react'
 import {
   Activity, Play, RefreshCw, Loader2, CheckCircle, XCircle,
@@ -15,11 +6,10 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '@/services/api'
 import type { PipelineName } from '@/services/api'
-import type { AgentStatus, PipelineRunResult } from '@/types'
+import type { PipelineAgent, PipelineRunResult } from '@/types'
 import { SystemHealthBar } from '@/components/SystemHealthBar'
 
-// Map backend agent names to display info
-const AGENT_META: Record<string, {
+const PIPELINE_META: Record<string, {
   label: string
   description: string
   icon: React.ComponentType<{ className?: string }>
@@ -103,7 +93,7 @@ function RunResultCard({ result, onDismiss }: { result: PipelineRunResult; onDis
             <XCircle className="h-4 w-4 text-[#EF4444]" />
           )}
           <span className="text-sm font-bold text-[#F9FAFB]">
-            {result.agent} — {result.status}
+            {result.name} — {result.status}
           </span>
         </div>
         <button
@@ -156,42 +146,40 @@ function RunResultCard({ result, onDismiss }: { result: PipelineRunResult; onDis
   )
 }
 
-export function AdminAgents() {
+export function IntelligencePipeline() {
   const queryClient = useQueryClient()
   const [runResults, setRunResults] = React.useState<Map<string, PipelineRunResult>>(new Map())
 
-  // Load existing last run from localStorage on mount
   React.useEffect(() => {
     const stored = localStorage.getItem('avana_last_intel_run')
     if (stored) {
       try {
         const parsed = JSON.parse(stored) as PipelineRunResult
-        setRunResults((prev) => new Map(prev).set(parsed.agent, parsed))
+        setRunResults((prev) => new Map(prev).set(parsed.name, parsed))
       } catch { /* ignore */ }
     }
   }, [])
 
-  const { data: agents, isLoading, isError, refetch } = useQuery({
-    queryKey: ['agent-status'],
-    queryFn: () => adminApi.getAgentStatus(),
+  const { data: pipelines, isLoading, isError, refetch } = useQuery({
+    queryKey: ['pipeline-status'],
+    queryFn: () => adminApi.getPipelineStatus(),
     refetchInterval: 30_000,
     staleTime: 25_000,
     retry: 2,
   })
 
   const runMutation = useMutation({
-    mutationFn: (name: PipelineName) => adminApi.runAgent(name),
+    mutationFn: (name: PipelineName) => adminApi.runPipeline(name),
     onSuccess: (result) => {
-      setRunResults((prev) => new Map(prev).set(result.agent, result))
-      // Refresh agent status after run
-      queryClient.invalidateQueries({ queryKey: ['agent-status'] })
+      setRunResults((prev) => new Map(prev).set(result.name, result))
+      queryClient.invalidateQueries({ queryKey: ['pipeline-status'] })
     },
   })
 
-  const dismissResult = (agentName: string) => {
+  const dismissResult = (pipelineName: string) => {
     setRunResults((prev) => {
       const next = new Map(prev)
-      next.delete(agentName)
+      next.delete(pipelineName)
       return next
     })
   }
@@ -200,12 +188,11 @@ export function AdminAgents() {
     <div className="min-h-full" style={{ background: '#09090B' }}>
       <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 space-y-5">
 
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-black text-[#F9FAFB]">Intelligence Pipeline</h1>
             <p className="text-sm text-[#6B7280] mt-0.5">
-              Monitor and trigger AI agent pipeline runs
+              Monitor and trigger AI pipeline runs
             </p>
           </div>
           <button
@@ -219,10 +206,8 @@ export function AdminAgents() {
           </button>
         </div>
 
-        {/* System Health */}
         <SystemHealthBar />
 
-        {/* Error state */}
         {isError && (
           <div
             className="flex items-center gap-3 px-4 py-3 rounded-xl"
@@ -230,7 +215,7 @@ export function AdminAgents() {
           >
             <AlertTriangle className="h-4 w-4 text-[#EF4444] shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-[#EF4444]">Could not load agent status</p>
+              <p className="text-sm font-semibold text-[#EF4444]">Could not load pipeline status</p>
               <p className="text-xs text-[#6B7280] mt-0.5">
                 Verify the backend is running and you have admin access.
               </p>
@@ -244,7 +229,6 @@ export function AdminAgents() {
           </div>
         )}
 
-        {/* Loading shimmer */}
         {isLoading && (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
@@ -257,41 +241,39 @@ export function AdminAgents() {
           </div>
         )}
 
-        {/* Agent cards — real data only */}
-        {!isLoading && agents && agents.length === 0 && (
+        {!isLoading && pipelines && pipelines.length === 0 && (
           <div
             className="flex flex-col items-center justify-center py-16 text-center rounded-2xl"
             style={{ background: '#1A1A24', border: '1px solid #1F2937' }}
           >
             <Bot className="h-12 w-12 text-[#374151] mb-3" />
-            <p className="text-sm font-semibold text-[#6B7280]">No Agents Returned</p>
+            <p className="text-sm font-semibold text-[#6B7280]">No Pipelines Returned</p>
             <p className="text-xs text-[#374151] mt-1">
-              The backend returned an empty agent list.
+              The backend returned an empty pipeline list.
             </p>
           </div>
         )}
 
-        {!isLoading && agents && agents.map((agent: AgentStatus) => {
-          const meta = AGENT_META[agent.name] || {
-            label: agent.name,
-            description: 'Agent',
+        {!isLoading && pipelines && pipelines.map((pipeline: PipelineAgent) => {
+          const meta = PIPELINE_META[pipeline.name] || {
+            label: pipeline.name,
+            description: 'Pipeline component',
             icon: Bot,
             runnableName: null,
             color: '#6B7280',
           }
-          const statusCfg = STATUS_CONFIG[agent.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.idle
+          const statusCfg = STATUS_CONFIG[pipeline.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.idle
           const isRunning = runMutation.isPending && runMutation.variables === meta.runnableName
-          const runResult = runResults.get(agent.name) ?? runResults.get(meta.runnableName ?? '')
+          const runResult = runResults.get(pipeline.name) ?? runResults.get(meta.runnableName ?? '')
 
           const Icon = meta.icon
 
           return (
             <div
-              key={agent.name}
+              key={pipeline.name}
               className="rounded-2xl p-5 space-y-4"
               style={{ background: '#1A1A24', border: '1px solid #1F2937' }}
             >
-              {/* Agent header */}
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3">
                   <div
@@ -306,27 +288,25 @@ export function AdminAgents() {
                   </div>
                 </div>
 
-                {/* Status badge */}
                 <div
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold shrink-0"
                   style={{ background: statusCfg.bg, color: statusCfg.color }}
                 >
-                  {agent.status === 'running' && <Activity className="h-3 w-3 animate-pulse" />}
-                  {agent.status === 'idle' && <Clock className="h-3 w-3" />}
-                  {agent.status === 'available' && <CheckCircle className="h-3 w-3" />}
+                  {pipeline.status === 'running' && <Activity className="h-3 w-3 animate-pulse" />}
+                  {pipeline.status === 'idle' && <Clock className="h-3 w-3" />}
+                  {pipeline.status === 'available' && <CheckCircle className="h-3 w-3" />}
                   {statusCfg.label}
                 </div>
               </div>
 
-              {/* Schedule info */}
               <div className="flex items-center gap-4 text-xs text-[#6B7280]">
-                {agent.scheduledMinutes != null ? (
+                {pipeline.scheduledMinutes != null ? (
                   <span>
                     Schedule: every{' '}
                     <span className="text-[#9CA3AF] font-medium">
-                      {agent.scheduledMinutes >= 60
-                        ? `${agent.scheduledMinutes / 60}h`
-                        : `${agent.scheduledMinutes}min`}
+                      {pipeline.scheduledMinutes >= 60
+                        ? `${pipeline.scheduledMinutes / 60}h`
+                        : `${pipeline.scheduledMinutes}min`}
                     </span>
                   </span>
                 ) : (
@@ -334,12 +314,10 @@ export function AdminAgents() {
                 )}
               </div>
 
-              {/* Last run result (if available) */}
               {runResult && (
-                <RunResultCard result={runResult} onDismiss={() => dismissResult(agent.name)} />
+                <RunResultCard result={runResult} onDismiss={() => dismissResult(pipeline.name)} />
               )}
 
-              {/* Run button — only for triggerable agents */}
               {meta.runnableName && (
                 <button
                   onClick={() => {
@@ -373,17 +351,16 @@ export function AdminAgents() {
 
               {!meta.runnableName && (
                 <p className="text-xs text-[#4B5563] text-center py-1">
-                  This agent runs automatically on-demand — no manual trigger available.
+                  This pipeline runs automatically on-demand — no manual trigger available.
                 </p>
               )}
             </div>
           )
         })}
 
-        {/* No data yet message */}
-        {!isLoading && !isError && agents && agents.length > 0 && (
+        {!isLoading && !isError && pipelines && pipelines.length > 0 && (
           <p className="text-[11px] text-center text-[#374151]">
-            Agent data refreshes every 30 seconds. Last pipeline runs are stored locally.
+            Pipeline data refreshes every 30 seconds. Last pipeline runs are stored locally.
           </p>
         )}
       </div>

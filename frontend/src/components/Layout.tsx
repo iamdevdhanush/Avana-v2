@@ -119,11 +119,11 @@ export function Layout() {
                     Manage Users
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() => navigate('/admin/agents')}
+                    onClick={() => navigate('/admin/pipeline')}
                     className="text-[#F9FAFB] hover:bg-[#1F2937] focus:bg-[#1F2937]"
                   >
                     <BarChart3 className="mr-2 h-4 w-4" />
-                    Agent Pipeline
+                    Intelligence Pipeline
                   </DropdownMenuItem>
                 </>
               )}
