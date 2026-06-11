@@ -1,16 +1,9 @@
-# Avana V2 — Render Blueprint
-# One-click deploy: https://render.com/deploy?blueprint-url=...
-#
-# Requires: GEMINI_API_KEY set as secret env var (prompted on first deploy)
-# Optional: OPENAI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY
-
 services:
-  # ── FastAPI Backend ────────────────────────────────────────────────────────
   - type: web
     name: avana-v2-backend
     runtime: python
     region: singapore
-    plan: starter
+    plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
@@ -22,182 +15,31 @@ services:
         value: 2.0.0
       - key: DEBUG
         value: false
-      - key: POSTGRES_USER
-        fromDatabase:
-          name: avana-v2-db
-          property: user
-      - key: POSTGRES_PASSWORD
-        fromDatabase:
-          name: avana-v2-db
-          property: password
-      - key: POSTGRES_HOST
-        fromDatabase:
-          name: avana-v2-db
-          property: host
-      - key: POSTGRES_PORT
-        fromDatabase:
-          name: avana-v2-db
-          property: port
-      - key: POSTGRES_DB
-        fromDatabase:
-          name: avana-v2-db
-          property: database
-      - key: REDIS_URL
-        fromService:
-          name: avana-v2-redis
-          type: keyvalue
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          name: avana-v2-redis
-          type: keyvalue
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          name: avana-v2-redis
-          type: keyvalue
-          property: connectionString
+      - key: DATABASE_URL
+        sync: false
       - key: SECRET_KEY
         generateValue: true
       - key: JWT_ALGORITHM
         value: HS256
-      - key: JWT_EXPIRATION_HOURS
-        value: "24"
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "7"
       - key: GEMINI_API_KEY
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-      - key: SUPABASE_SERVICE_KEY
         sync: false
       - key: RATE_LIMIT_MAX
         value: "100"
       - key: RATE_LIMIT_WINDOW
         value: "60"
       - key: CORS_ORIGINS
-        value: https://avana-v2.vercel.app,https://avana-v2-frontend.onrender.com,http://localhost:5173
-      - key: NEWS_SCRAPE_INTERVAL_MINUTES
-        value: "360"
-      - key: AGENT_RUN_INTERVAL_MINUTES
-        value: "60"
+        value: https://avana-v2.vercel.app,http://localhost:5173
       - key: KARNATAKA_BOUNDS
         value: 11.5,18.0,74.0,78.5
-
-  # ── Celery Worker (AI Agent Runner) ────────────────────────────────────────
-  - type: worker
-    name: avana-v2-celery-worker
-    runtime: python
-    region: singapore
-    plan: starter
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
-    envVars:
-      - key: POSTGRES_USER
-        fromDatabase:
-          name: avana-v2-db
-          property: user
-      - key: POSTGRES_PASSWORD
-        fromDatabase:
-          name: avana-v2-db
-          property: password
-      - key: POSTGRES_HOST
-        fromDatabase:
-          name: avana-v2-db
-          property: host
-      - key: POSTGRES_PORT
-        fromDatabase:
-          name: avana-v2-db
-          property: port
-      - key: POSTGRES_DB
-        fromDatabase:
-          name: avana-v2-db
-          property: database
-      - key: REDIS_URL
-        fromService:
-          name: avana-v2-redis
-          type: keyvalue
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          name: avana-v2-redis
-          type: keyvalue
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          name: avana-v2-redis
-          type: keyvalue
-          property: connectionString
-      - key: SECRET_KEY
-        generateValue: true
-      - key: GEMINI_API_KEY
+      - key: SENDGRID_API_KEY
         sync: false
-      - key: NEWS_SCRAPE_INTERVAL_MINUTES
-        value: "360"
-      - key: AGENT_RUN_INTERVAL_MINUTES
-        value: "60"
-      - key: KARNATAKA_BOUNDS
-        value: 11.5,18.0,74.0,78.5
-
-  # ── Celery Beat Scheduler ──────────────────────────────────────────────────
-  - type: worker
-    name: avana-v2-celery-beat
-    runtime: python
-    region: singapore
-    plan: starter
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: celery -A app.tasks.celery_app beat --loglevel=info
-    envVars:
-      - key: REDIS_URL
-        fromService:
-          name: avana-v2-redis
-          type: keyvalue
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          name: avana-v2-redis
-          type: keyvalue
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          name: avana-v2-redis
-          type: keyvalue
-          property: connectionString
-      - key: SECRET_KEY
-        generateValue: true
-      - key: GEMINI_API_KEY
-        sync: false
-
-  # ── React / Vite Frontend (Static Site) ────────────────────────────────────
-  - type: web
-    name: avana-v2-frontend
-    runtime: static
-    rootDir: frontend
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
-    envVars:
-      - key: VITE_API_URL
-        value: https://avana-v2-backend.onrender.com/api/v1
-
-  # ── Redis (Key Value) ──────────────────────────────────────────────────────
-  - type: keyvalue
-    name: avana-v2-redis
-    plan: starter
-    region: singapore
-    maxmemoryPolicy: allkeys-lru
-    ipAllowList:
-      - source: 0.0.0.0/0
-        description: allow all (private network)
-
-databases:
-  # ── PostgreSQL + PostGIS ───────────────────────────────────────────────────
-  - name: avana-v2-db
-    plan: basic-256mb
-    region: singapore
-    databaseName: avana_v2
-    postgresMajorVersion: "16"
-    ipAllowList: []
+      - key: SENDGRID_FROM_EMAIL
+        value: sos@avana-safety.app
+      - key: SOS_NOTIFICATION_EMAIL_ENABLED
+        value: false
+      - key: ENABLE_INTELLIGENCE_PIPELINE
+        value: true

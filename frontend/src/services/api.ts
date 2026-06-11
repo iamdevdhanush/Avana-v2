@@ -19,6 +19,23 @@ import type {
 const RAW = import.meta.env.VITE_API_URL || ''
 const API_URL = RAW.endsWith('/api/v1') ? RAW : RAW ? `${RAW}/api/v1` : '/api/v1'
 
+let isRefreshing = false
+let failedQueue: Array<{
+  resolve: (value: unknown) => void
+  reject: (reason: unknown) => void
+}> = []
+
+function processQueue(error: unknown, token: string | null = null) {
+  failedQueue.forEach((p) => {
+    if (error) {
+      p.reject(error)
+    } else {
+      p.resolve(token)
+    }
+  })
+  failedQueue = []
+}
+
 const api = axios.create({
   baseURL: API_URL,
   headers: { 'Content-Type': 'application/json' },
@@ -35,9 +52,48 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
 api.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
-    if (error.response?.status === 401) {
+  async (error: AxiosError) => {
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject })
+        }).then((token) => {
+          if (originalRequest.headers) {
+            originalRequest.headers.Authorization = `Bearer ${token}`
+          }
+          return api(originalRequest)
+        })
+      }
+      originalRequest._retry = true
+      isRefreshing = true
+      const refreshToken = localStorage.getItem('avana_refresh_token')
+      if (refreshToken) {
+        try {
+          const { data: raw } = await api.post('/auth/refresh', { refresh_token: refreshToken })
+          const inner = (raw.data || raw) as Record<string, unknown>
+          const newToken = String(inner.token || '')
+          const newRefresh = String(inner.refresh_token || '')
+          localStorage.setItem('avana_token', newToken)
+          if (newRefresh) localStorage.setItem('avana_refresh_token', newRefresh)
+          processQueue(null, newToken)
+          if (originalRequest.headers) {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`
+          }
+          return api(originalRequest)
+        } catch (refreshError) {
+          processQueue(refreshError, null)
+          localStorage.removeItem('avana_token')
+          localStorage.removeItem('avana_refresh_token')
+          localStorage.removeItem('avana_user')
+          window.location.href = '/login'
+          return Promise.reject(refreshError)
+        } finally {
+          isRefreshing = false
+        }
+      }
       localStorage.removeItem('avana_token')
+      localStorage.removeItem('avana_refresh_token')
       localStorage.removeItem('avana_user')
       window.location.href = '/login'
     }
@@ -173,27 +229,48 @@ function mapSOS(e: Record<string, unknown>): SOSEvent {
 // Backend has a middleware that wraps all JSON responses in { data: ..., status: 'success' }.
 // So we always extract .data first.
 
+function storeAuth(inner: Record<string, unknown>): { token: string; user: User } {
+  const token = String(inner.token || '')
+  const refreshToken = String(inner.refresh_token || '')
+  const user = mapUser(inner.user as Record<string, unknown>)
+  if (token) localStorage.setItem('avana_token', token)
+  if (refreshToken) localStorage.setItem('avana_refresh_token', refreshToken)
+  if (user) localStorage.setItem('avana_user', JSON.stringify(user))
+  return { token, user }
+}
+
 export const authApi = {
   login: async (email: string, password: string): Promise<{ token: string; user: User }> => {
     try {
       const { data: raw } = await api.post('/auth/login', { email, password })
-      const inner = (raw.data || raw) as Record<string, unknown>
-      return { token: String(inner.token || ''), user: mapUser(inner.user as Record<string, unknown>) }
+      return storeAuth((raw.data || raw) as Record<string, unknown>)
     } catch (error) { handleError(error) }
   },
 
   signup: async (userData: { email: string; password: string; name: string; phone?: string }): Promise<{ token: string; user: User }> => {
     try {
       const { data: raw } = await api.post('/auth/signup', userData)
-      const inner = (raw.data || raw) as Record<string, unknown>
-      return { token: String(inner.token || ''), user: mapUser(inner.user as Record<string, unknown>) }
+      return storeAuth((raw.data || raw) as Record<string, unknown>)
+    } catch (error) { handleError(error) }
+  },
+
+  refreshToken: async (): Promise<{ token: string; user: User }> => {
+    try {
+      const refreshToken = localStorage.getItem('avana_refresh_token')
+      if (!refreshToken) throw new Error('No refresh token')
+      const { data: raw } = await api.post('/auth/refresh', { refresh_token: refreshToken })
+      return storeAuth((raw.data || raw) as Record<string, unknown>)
     } catch (error) { handleError(error) }
   },
 
   logout: async (): Promise<void> => {
     try {
       await api.post('/auth/logout')
-    } catch (error) { handleError(error) }
+    } finally {
+      localStorage.removeItem('avana_token')
+      localStorage.removeItem('avana_refresh_token')
+      localStorage.removeItem('avana_user')
+    }
   },
 
   getProfile: async (): Promise<User> => {
@@ -376,6 +453,17 @@ export const communityApi = {
   },
 }
 
+export type PipelineName = 'intelligence' | 'community' | 'risk'
+export type PipelineStatus = {
+  pipelines: Array<{ name: string; status: string; schedule_minutes?: number | null }>
+  pipeline: string
+}
+export type PipelineResult = {
+  pipeline: string
+  status: string
+  result: Record<string, unknown>
+}
+
 export const adminApi = {
   listUsers: async (p?: { page?: number; page_size?: number }): Promise<{ items: User[]; total: number; page: number; page_size: number }> => {
     try {
@@ -466,6 +554,20 @@ export const adminApi = {
         await api.put(`/admin/users/${userId}/status`, null, { params: { is_active: isActive } })
       }
       return { id: userId, email: '', name: '', role: 'user', emergencyContacts: [], isVerified: false, createdAt: '', updatedAt: '' }
+    } catch (error) { handleError(error) }
+  },
+
+  getPipelineStatus: async (): Promise<PipelineStatus> => {
+    try {
+      const { data: raw } = await api.get('/admin/pipeline/status')
+      return (raw.data || raw) as PipelineStatus
+    } catch (error) { handleError(error) }
+  },
+
+  triggerPipeline: async (name: PipelineName): Promise<PipelineResult> => {
+    try {
+      const { data: raw } = await api.post(`/admin/pipeline/run/${name}`)
+      return (raw.data || raw) as PipelineResult
     } catch (error) { handleError(error) }
   },
 }

@@ -1,6 +1,7 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.agents.route_intelligence import run as route_run
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.route import (
@@ -10,7 +11,75 @@ from app.schemas.route import (
     RouteSegment,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/route", tags=["Route Intelligence"])
+
+OSRM_BASE_URL = "https://router.project-osrm.org"
+
+
+async def _fetch_route(source_lat: float, source_lng: float, dest_lat: float, dest_lng: float) -> dict:
+    import httpx
+    url = (
+        f"{OSRM_BASE_URL}/route/v1/driving/"
+        f"{source_lng},{source_lat};{dest_lng},{dest_lat}"
+        f"?overview=full&geometries=geojson&steps=true&alternatives=3"
+    )
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(url)
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Route service unavailable",
+            )
+        return resp.json()
+
+
+def _osrm_to_route_option(route_data: dict, route_type: str) -> RouteOption:
+    if not route_data:
+        return RouteOption(
+            type=route_type,
+            duration_minutes=0,
+            distance_km=0,
+            safety_score=0,
+            segments=[],
+            geometry=[],
+        )
+    leg = route_data.get("legs", [{}])[0]
+    steps = leg.get("steps", [])
+    segments = []
+    geometry_coords = []
+    coords = route_data.get("geometry", {}).get("coordinates", [])
+    for coord in coords:
+        geometry_coords.append([coord[1], coord[0]])
+
+    for step in steps:
+        seg_coords = step.get("geometry", {}).get("coordinates", [])
+        if seg_coords:
+            start = seg_coords[0]
+            end = seg_coords[-1]
+            intersection = step.get("intersections", [{}])[0]
+            segments.append(RouteSegment(
+                start_lat=start[1],
+                start_lng=start[0],
+                end_lat=end[1],
+                end_lng=end[0],
+                safety_score=50.0,
+                risk_category="Moderate",
+                distance_m=step.get("distance", 0),
+            ))
+
+    duration = round((route_data.get("duration", 0) or 0) / 60, 2)
+    distance = round((route_data.get("distance", 0) or 0) / 1000, 2)
+
+    return RouteOption(
+        type=route_type,
+        duration_minutes=duration,
+        distance_km=distance,
+        safety_score=50.0,
+        segments=segments,
+        geometry=geometry_coords,
+    )
 
 
 @router.post("/safe", response_model=RouteResponse)
@@ -19,50 +88,28 @@ async def get_safe_route(
     user: User = Depends(get_current_user),
 ):
     try:
-        result = await route_run(
-            (body.source_lat, body.source_lng),
-            (body.dest_lat, body.dest_lng),
+        osrm_data = await _fetch_route(
+            body.source_lat, body.source_lng,
+            body.dest_lat, body.dest_lng,
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Route calculation failed: {str(e)}")
+        logger.exception("Route fetch failed")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Route calculation failed: {str(e)}")
 
-    def _build_option(route_data: dict, route_type: str) -> RouteOption:
-        if not route_data:
-            return RouteOption(
-                type=route_type,
-                duration_minutes=0,
-                distance_km=0,
-                safety_score=0,
-                segments=[],
-                geometry=[],
-            )
-        segments = [
-            RouteSegment(
-                start_lat=s.get("start", [0, 0])[0],
-                start_lng=s.get("start", [0, 0])[1],
-                end_lat=s.get("end", [0, 0])[0],
-                end_lng=s.get("end", [0, 0])[1],
-                safety_score=s.get("score", 50.0),
-                risk_category=s.get("risk_category", "Moderate"),
-                distance_m=s.get("length_meters", 0),
-            )
-            for s in (route_data.get("segments") or [])
-        ]
-        return RouteOption(
-            type=route_type,
-            duration_minutes=round((route_data.get("duration_seconds", 0) or 0) / 60, 2),
-            distance_km=round((route_data.get("distance_meters", 0) or 0) / 1000, 2),
-            safety_score=route_data.get("avg_safety_score", 50.0),
-            segments=segments,
-            geometry=[],
-        )
+    routes = osrm_data.get("routes", [])
+    if not routes:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No route found")
+
+    sorted_routes = sorted(routes, key=lambda r: r.get("duration", float("inf")))
 
     return RouteResponse(
         source=(body.source_lat, body.source_lng),
         destination=(body.dest_lat, body.dest_lng),
-        safest=_build_option(result.get("safest_route"), "safest"),
-        fastest=_build_option(result.get("fastest_route"), "fastest"),
-        balanced=_build_option(result.get("balanced_route"), "balanced"),
+        safest=_osrm_to_route_option(sorted_routes[0], "safest"),
+        fastest=_osrm_to_route_option(sorted_routes[0] if len(sorted_routes) == 1 else sorted_routes[0], "fastest"),
+        balanced=_osrm_to_route_option(sorted_routes[-1] if len(sorted_routes) > 1 else sorted_routes[0], "balanced"),
     )
 
 

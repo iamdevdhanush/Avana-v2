@@ -3,14 +3,12 @@ from unittest.mock import patch
 import pytest
 from httpx import AsyncClient
 
-from app.agents.risk_scoring import run as risk_scoring_run
-
 
 @pytest.mark.asyncio
 @pytest.mark.risk
 async def test_calculate_risk_score(async_client: AsyncClient, auth_headers):
     payload = {"latitude": 12.9716, "longitude": 77.5946}
-    with patch("app.api.v1.risk.risk_scoring_run") as mock_run:
+    with patch("app.api.v1.risk.score_location") as mock_run:
         mock_run.return_value = {
             "score": 35.5,
             "category": "Moderate",
@@ -36,7 +34,7 @@ async def test_calculate_risk_score(async_client: AsyncClient, auth_headers):
 @pytest.mark.risk
 async def test_calculate_risk_score_outside_karnataka(async_client: AsyncClient, auth_headers):
     payload = {"latitude": 28.6139, "longitude": 77.2090}
-    with patch("app.api.v1.risk.risk_scoring_run") as mock_run:
+    with patch("app.api.v1.risk.score_location") as mock_run:
         mock_run.return_value = {
             "score": 50.0,
             "category": "Moderate",

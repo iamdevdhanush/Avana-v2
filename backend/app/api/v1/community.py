@@ -155,13 +155,28 @@ async def vote_post(
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
 
-    if vote_type == "up":
-        post.upvotes += 1
-    elif vote_type == "down":
-        post.downvotes += 1
-    else:
+    if vote_type not in ("up", "down"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid vote type")
 
+    voter_id = str(user.id)
+    voters = post.voters or {}
+    existing_vote = voters.get(voter_id)
+
+    if existing_vote == vote_type:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already voted")
+
+    if existing_vote == "up":
+        post.upvotes = max(0, post.upvotes - 1)
+    elif existing_vote == "down":
+        post.downvotes = max(0, post.downvotes - 1)
+
+    if vote_type == "up":
+        post.upvotes += 1
+    else:
+        post.downvotes += 1
+
+    voters[voter_id] = vote_type
+    post.voters = voters
     post.updated_at = datetime.now(timezone.utc)
     await db.flush()
     return {"id": str(post.id), "upvotes": post.upvotes, "downvotes": post.downvotes}

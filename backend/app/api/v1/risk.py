@@ -1,18 +1,17 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, func, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 
-from app.agents.risk_scoring import run as risk_scoring_run
-from app.agents.heatmap import get_heatmap_data
 from app.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_current_user
 from app.models.user import User
+from app.pipeline.risk import score_location
+from app.pipeline.heatmap import get_heatmap_data
 from app.schemas.risk import (
     RiskScoreRequest,
     RiskScoreResponse,
-    RiskFactors,
     HeatmapRequest,
     HeatmapResponse,
     HeatmapPoint,
@@ -25,31 +24,18 @@ router = APIRouter(prefix="/risk", tags=["Risk Assessment"])
 @router.post("/score", response_model=RiskScoreResponse)
 async def calculate_risk_score(
     body: RiskScoreRequest,
-    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     try:
-        result = await risk_scoring_run(body.latitude, body.longitude)
+        result = await score_location(body.latitude, body.longitude)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Risk scoring failed: {str(e)}")
-
-    factors_data = result.get("factors", {})
-    factors = RiskFactors(
-        historical_risk=factors_data.get("historical_risk", 0.0),
-        recent_reports_impact=factors_data.get("recent_impact", 0.0),
-        night_factor=factors_data.get("night_penalty", 0.0),
-        severity_penalty=factors_data.get("severity_penalty", 0.0),
-        police_presence_bonus=min(10.0, (factors_data.get("nearby_police_stations", 0) or 0) * 3.33),
-        hospital_access_bonus=min(5.0, (factors_data.get("nearby_hospitals", 0) or 0) * 1.67),
-        population_density_factor=0.0,
-        final_score=result.get("score", 50.0),
-    )
 
     return RiskScoreResponse(
         score=result.get("score", 50.0),
         category=result.get("category", "Moderate"),
-        factors=factors,
-        recommendations=[],
+        factors=result.get("factors", {}),
+        recommendations=result.get("recommendations", []),
     )
 
 
@@ -59,26 +45,17 @@ async def get_heatmap(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        zoom_str = "city"
-        if body.zoom <= 8:
-            zoom_str = "district"
-        elif body.zoom <= 13:
-            zoom_str = "city"
-        else:
-            zoom_str = "ward"
-
         points_data = await get_heatmap_data(
             body.sw_lat, body.sw_lng,
             body.ne_lat, body.ne_lng,
-            zoom_str,
         )
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Heatmap query failed: {str(e)}")
 
     points = [
         HeatmapPoint(
-            latitude=p["latitude"],
-            longitude=p["longitude"],
+            latitude=p.get("latitude", 0),
+            longitude=p.get("longitude", 0),
             weight=p.get("score", 50.0) / 100.0,
             risk_category=p.get("category", "Moderate"),
         )

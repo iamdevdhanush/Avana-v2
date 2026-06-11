@@ -1,4 +1,5 @@
 import uuid
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -6,11 +7,45 @@ from geoalchemy2.elements import WKTElement
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import require_user
 from app.models.sos_event import SOSEvent, SOSStatus
 from app.models.user import User, EmergencyContact
 from app.schemas.sos import SOSCreate, SOSResponse
+
+logger = logging.getLogger(__name__)
+
+
+async def _send_sos_email(sos: SOSEvent, user: User):
+    if not settings.SOS_NOTIFICATION_EMAIL_ENABLED:
+        return
+    if not settings.SENDGRID_API_KEY:
+        logger.warning("SOS email enabled but SENDGRID_API_KEY not configured")
+        return
+    try:
+        import sendgrid
+        from sendgrid.helpers.mail import Mail, Email, To, Content
+        sg = sendgrid.SendGridAPIClient(api_key=settings.SENDGRID_API_KEY)
+        from_email = Email(settings.SENDGRID_FROM_EMAIL)
+        to_email = To(user.email)
+        subject = f"SOS Alert Triggered - {sos.emergency_type or 'General'}"
+        content = Content(
+            "text/plain",
+            f"An SOS alert was triggered at your location.\n\n"
+            f"Time: {sos.created_at.isoformat()}\n"
+            f"Location: ({sos.latitude}, {sos.longitude})\n"
+            f"Type: {sos.emergency_type or 'General'}\n"
+            f"Message: {sos.message or 'No message'}\n\n"
+            f"- Avana Safety",
+        )
+        mail = Mail(from_email, to_email, subject, content)
+        response = sg.client.mail.send.post(request_body=mail.get())
+        logger.info(f"SOS email sent to {user.email}, status={response.status_code}")
+    except ImportError:
+        logger.warning("sendgrid package not installed, skipping email notification")
+    except Exception as e:
+        logger.error(f"Failed to send SOS email: {e}")
 
 router = APIRouter(prefix="/sos", tags=["SOS"])
 
@@ -45,6 +80,11 @@ async def trigger_sos(
     )
     db.add(sos)
     await db.flush()
+
+    try:
+        await _send_sos_email(sos, user)
+    except Exception as e:
+        logger.error(f"SOS email notification failed: {e}")
 
     return SOSResponse(
         id=sos.id,
