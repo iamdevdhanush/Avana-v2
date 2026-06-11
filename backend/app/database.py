@@ -5,17 +5,26 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=settings.DEBUG,
-    pool_size=5,
-    max_overflow=3,
-    pool_pre_ping=True,
-)
+_engine = None
 
-async_session_factory = async_sessionmaker(
-    engine, class_=AsyncSession, expire_on_commit=False
-)
+
+def get_engine():
+    global _engine
+    if _engine is None:
+        if not settings.DATABASE_URL:
+            raise RuntimeError("DATABASE_URL is not configured. Set it in .env or environment variables.")
+        _engine = create_async_engine(
+            settings.DATABASE_URL,
+            echo=settings.DEBUG,
+            pool_size=5,
+            max_overflow=3,
+            pool_pre_ping=True,
+        )
+    return _engine
+
+
+def get_session_factory():
+    return async_sessionmaker(get_engine(), class_=AsyncSession, expire_on_commit=False)
 
 
 class Base(DeclarativeBase):
@@ -23,7 +32,8 @@ class Base(DeclarativeBase):
 
 
 async def get_db() -> AsyncSession:
-    session = async_session_factory()
+    factory = get_session_factory()
+    session = factory()
     try:
         yield session
         await session.commit()
@@ -35,6 +45,7 @@ async def get_db() -> AsyncSession:
 
 
 async def init_db():
+    engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables verified/created")

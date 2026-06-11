@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import List, Tuple, Optional
 from sqlalchemy import text
 
-from app.database import async_session_factory
+from app.database import get_session_factory
 from app.pipeline.risk import score_location
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,8 @@ async def generate_heatmap_for_bounds(
                     "category": "Moderate",
                     "factors": {},
                 })
-    async with async_session_factory() as session:
+    factory = get_session_factory()
+    async with factory() as session:
         for r in results:
             try:
                 await session.execute(
@@ -92,7 +93,8 @@ async def get_heatmap_data(
     sw_lat: float, sw_lng: float,
     ne_lat: float, ne_lng: float,
 ) -> List[dict]:
-    async with async_session_factory() as session:
+    factory = get_session_factory()
+    async with factory() as session:
         result = await session.execute(
             text("""
                 SELECT DISTINCT ON (latitude, longitude)
