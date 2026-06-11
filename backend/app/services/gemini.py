@@ -110,6 +110,9 @@ class GeminiService:
                     self._init_error = "Gemini API key invalid or rejected"
                     logger.error(self._init_error)
                     return ""
+                if "quota" in err_str.lower() or "resource_exhausted" in err_str.lower():
+                    logger.error(f"Gemini quota exhausted: {e}")
+                    return ""
                 if self._is_transient(e) and attempt < 3:
                     delay = 1.0 * (2 ** (attempt - 1))
                     logger.warning(f"Gemini transient error (attempt {attempt}/3): {e}. Retrying in {delay}s...")

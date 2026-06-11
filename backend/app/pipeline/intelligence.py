@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy import select, text
@@ -48,25 +49,45 @@ _CITY_SOURCES = [
 _INCIDENT_TYPES = [t.value for t in IncidentType]
 
 
+_MAX_ARTICLES = 50
+
+
+def _fetch_article_content_for_url(scraper: NewsScraper, article: dict) -> dict:
+    url = article.get("link", "")
+    full_text = scraper.fetch_article_content(url)
+    return {
+        "city": article.get("city", ""),
+        "title": article.get("title", ""),
+        "link": url,
+        "summary": article.get("summary", ""),
+        "full_text": full_text or article.get("summary", ""),
+    }
+
+
 async def fetch_all_articles() -> List[dict]:
     articles = []
     scraper = NewsScraper()
     try:
         all_raw = scraper.fetch_all()
         seen_urls = set()
+        unique = []
         for a in all_raw:
             url = a.get("link", "")
             if url and url not in seen_urls:
                 seen_urls.add(url)
-                full_text = scraper.fetch_article_content(url)
-                articles.append({
-                    "city": a.get("city", ""),
-                    "title": a.get("title", ""),
-                    "link": url,
-                    "summary": a.get("summary", ""),
-                    "full_text": full_text or a.get("summary", ""),
-                })
-        logger.info(f"Fetched {len(articles)} unique articles")
+                unique.append(a)
+        logger.info(f"Unique articles: {len(unique)}")
+        if len(unique) > _MAX_ARTICLES:
+            unique = unique[:_MAX_ARTICLES]
+            logger.info(f"Limited to {_MAX_ARTICLES} articles for this run")
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            futures = [pool.submit(_fetch_article_content_for_url, scraper, a) for a in unique]
+            for future in as_completed(futures):
+                try:
+                    articles.append(future.result())
+                except Exception as e:
+                    logger.warning(f"Article fetch failed: {e}")
+        logger.info(f"Fetched content for {len(articles)} articles")
     finally:
         scraper.close()
     return articles
