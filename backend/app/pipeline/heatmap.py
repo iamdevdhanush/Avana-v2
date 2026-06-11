@@ -68,9 +68,8 @@ async def generate_heatmap_for_bounds(
                     text("""
                         INSERT INTO risk_scores
                             (latitude, longitude, score, category,
-                             calculated_at, created_at, location_id)
-                        VALUES (:lat, :lng, :score, :cat, NOW(), NOW(),
-                                gen_random_uuid())
+                             calculated_at, created_at)
+                        VALUES (:lat, :lng, :score, :cat, NOW(), NOW())
                         ON CONFLICT (latitude, longitude) DO UPDATE
                         SET score = EXCLUDED.score,
                             category = EXCLUDED.category,

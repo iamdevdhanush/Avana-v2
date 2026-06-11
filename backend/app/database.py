@@ -1,6 +1,7 @@
 import logging
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy import text
 from sqlalchemy.orm import DeclarativeBase
 from app.config import settings
 
@@ -12,10 +13,11 @@ _engine = None
 def get_engine():
     global _engine
     if _engine is None:
-        if not settings.DATABASE_URL:
-            raise RuntimeError("DATABASE_URL is not configured. Set it in .env or environment variables.")
+        url = settings.build_database_url()
+        if not url:
+            raise RuntimeError("Database not configured. Set DATABASE_URL or POSTGRES_HOST/USER/PASSWORD.")
         _engine = create_async_engine(
-            settings.DATABASE_URL,
+            url,
             echo=settings.DEBUG,
             pool_size=5,
             max_overflow=3,
@@ -53,3 +55,14 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables verified/created")
+
+
+async def check_db() -> bool:
+    try:
+        engine = get_engine()
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return True
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        return False

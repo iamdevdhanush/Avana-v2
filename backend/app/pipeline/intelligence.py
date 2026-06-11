@@ -130,30 +130,63 @@ async def extract_incidents_from_article(article: dict) -> List[dict]:
 
 async def geocode_incidents(incidents: List[dict]) -> List[dict]:
     nominatim = NominatimService()
-    try:
-        for inc in incidents:
-            location_str = inc.get("location", "")
-            if not location_str:
-                inc["latitude"] = None
-                inc["longitude"] = None
-                continue
-            try:
-                query = f"{location_str}, Karnataka, India"
-                result = await nominatim.geocode(query)
-                if result:
-                    inc["latitude"] = float(result["lat"])
-                    inc["longitude"] = float(result["lng"])
-                    inc["display_name"] = result.get("display_name", "")
-                else:
+    cache_hits = 0
+    cache_misses = 0
+    factory = get_session_factory()
+    async with factory() as session:
+        try:
+            for inc in incidents:
+                location_str = inc.get("location", "")
+                if not location_str:
                     inc["latitude"] = None
                     inc["longitude"] = None
-            except Exception as e:
-                logger.warning(f"Geocode failed for '{location_str}': {e}")
-                inc["latitude"] = None
-                inc["longitude"] = None
-        return incidents
-    finally:
-        await nominatim.aclose()
+                    continue
+                query = f"{location_str}, Karnataka, India"
+                try:
+                    result = await session.execute(
+                        text("SELECT latitude, longitude, display_name FROM geocoding_cache WHERE location_text = :q"),
+                        {"q": query},
+                    )
+                    cached = result.fetchone()
+                    if cached:
+                        inc["latitude"] = float(cached[0])
+                        inc["longitude"] = float(cached[1])
+                        inc["display_name"] = cached[2] or ""
+                        await session.execute(
+                            text("UPDATE geocoding_cache SET last_verified = NOW() WHERE location_text = :q"),
+                            {"q": query},
+                        )
+                        cache_hits += 1
+                        continue
+                    cache_misses += 1
+                    named_result = await nominatim.geocode(query)
+                    if named_result:
+                        inc["latitude"] = float(named_result["lat"])
+                        inc["longitude"] = float(named_result["lng"])
+                        inc["display_name"] = named_result.get("display_name", "")
+                        await session.execute(
+                            text("""
+                                INSERT INTO geocoding_cache
+                                    (id, location_text, latitude, longitude, display_name, last_verified, created_at)
+                                VALUES (gen_random_uuid(), :q, :lat, :lng, :dn, NOW(), NOW())
+                                ON CONFLICT (location_text) DO NOTHING
+                            """),
+                            {"q": query, "lat": inc["latitude"], "lng": inc["longitude"], "dn": inc.get("display_name", "")},
+                        )
+                    else:
+                        inc["latitude"] = None
+                        inc["longitude"] = None
+                except Exception as e:
+                    logger.warning(f"Geocode failed for '{location_str}': {e}")
+                    inc["latitude"] = None
+                    inc["longitude"] = None
+            await session.commit()
+        finally:
+            await nominatim.aclose()
+    total = cache_hits + cache_misses
+    if total > 0:
+        logger.info(f"Geocoding cache: {cache_hits}/{total} hits ({cache_hits/total*100:.1f}%)")
+    return incidents
 
 
 async def save_incidents(incidents: List[dict]) -> dict:
@@ -253,6 +286,40 @@ async def run_intelligence_pipeline() -> dict:
     except Exception as e:
         results["steps"]["save"] = {"status": "failed", "error": str(e)}
         logger.error(f"Step 4 failed: {e}")
+        results["duration_seconds"] = round(time.time() - start, 2)
+        return results
+
+    try:
+        risk_result = await recalculate_risk_scores()
+        results["steps"]["risk_recalc"] = {"status": "ok", **risk_result}
+        logger.info(f"Step 5 complete: {risk_result.get('updated', 0)} risk scores updated")
+    except Exception as e:
+        results["steps"]["risk_recalc"] = {"status": "failed", "error": str(e)}
+        logger.error(f"Step 5 failed: {e}")
+
+    try:
+        from app.config import settings
+        bounds = [float(x) for x in settings.KARNATAKA_BOUNDS.split(",")]
+        if len(bounds) == 4:
+            heat_result = await update_heatmap_for_bounds(bounds[0], bounds[2], bounds[1], bounds[3])
+            results["steps"]["heatmap"] = {"status": "ok", **heat_result}
+            logger.info(f"Step 6 complete: {heat_result.get('points_generated', 0)} heatmap points")
+    except Exception as e:
+        results["steps"]["heatmap"] = {"status": "failed", "error": str(e)}
+        logger.error(f"Step 6 failed: {e}")
+
+    saved_count = save_result.get("saved", 0)
+    risk_count = results.get("steps", {}).get("risk_recalc", {}).get("updated", 0)
+    heat_count = results.get("steps", {}).get("heatmap", {}).get("points_generated", 0)
+    results["summary"] = {
+        "articles_fetched": len(articles),
+        "incidents_extracted": len(all_incidents),
+        "incidents_saved": saved_count,
+        "risk_scores_updated": risk_count,
+        "heatmap_points_generated": heat_count,
+        "duration_seconds": round(time.time() - start, 2),
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+    }
     results["duration_seconds"] = round(time.time() - start, 2)
     logger.info(f"Pipeline complete in {results['duration_seconds']}s")
     logger.info("=" * 60)

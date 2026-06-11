@@ -13,10 +13,6 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = ""
 
-    SUPABASE_URL: Optional[str] = None
-    SUPABASE_ANON_KEY: Optional[str] = None
-    SUPABASE_SERVICE_KEY: Optional[str] = None
-
     SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
@@ -37,12 +33,25 @@ class Settings(BaseSettings):
 
     ENABLE_INTELLIGENCE_PIPELINE: bool = True
 
+    def build_database_url(self) -> str:
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        host = os.environ.get("POSTGRES_HOST", "")
+        port = os.environ.get("POSTGRES_PORT", "5432")
+        user = os.environ.get("POSTGRES_USER", "")
+        password = os.environ.get("POSTGRES_PASSWORD", "")
+        db = os.environ.get("POSTGRES_DB", "avana_v2")
+        if host and user and password:
+            return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{db}"
+        return ""
+
     def validate_required(self):
         errors = []
         if not self.SECRET_KEY or len(self.SECRET_KEY) < 32:
             errors.append("SECRET_KEY must be at least 32 characters")
-        if not self.DATABASE_URL:
-            errors.append("DATABASE_URL is required")
+        url = self.build_database_url()
+        if not url:
+            errors.append("DATABASE_URL (or POSTGRES_HOST/USER/PASSWORD) is required")
         return errors
 
     class Config:

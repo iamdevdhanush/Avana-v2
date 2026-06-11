@@ -121,13 +121,13 @@ async def score_location(lat: float, lng: float, district: Optional[str] = None)
     score = max(0.0, min(100.0, raw_score))
 
     if score <= 25:
-        category = "Safe"
+        category = "safe"
     elif score <= 50:
-        category = "Moderate"
+        category = "moderate"
     elif score <= 75:
-        category = "Elevated"
+        category = "high_risk"
     else:
-        category = "High Risk"
+        category = "critical"
 
     factors = {
         "historical_risk": round(historical_risk, 2),

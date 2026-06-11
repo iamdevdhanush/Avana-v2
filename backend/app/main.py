@@ -11,7 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError, DataError
 
 from app.config import settings
-from app.database import init_db
+from app.database import init_db, check_db
 from app.api.router import api_router
 from app.utils.security import rate_limit_middleware
 
@@ -25,11 +25,12 @@ async def lifespan(app: FastAPI):
     if errs:
         for e in errs:
             logger.critical(f"Configuration error: {e}")
-    try:
-        await init_db()
-        logger.info("Database initialized")
-    except Exception as e:
-        logger.warning(f"Database initialization skipped: {e}")
+        raise RuntimeError(f"Configuration errors: {', '.join(errs)}")
+    db_ok = await check_db()
+    if not db_ok:
+        raise RuntimeError("Database is unreachable. Check DATABASE_URL or POSTGRES_* env vars.")
+    await init_db()
+    logger.info("Database initialized")
     yield
     logger.info("Shutting down")
 
@@ -150,25 +151,28 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.get("/debug/env")
 async def debug_env():
-    url = settings.DATABASE_URL or ""
+    url = settings.build_database_url()
     return {
         "DATABASE_URL_set": bool(settings.DATABASE_URL),
-        "DATABASE_URL_prefix": url.split("://")[0] if url else None,
+        "resolved_url": f"{url.split('://')[0]}://{url.split('@')[1].split(':')[0]}:***@{url.split('@')[1].split(':')[1].split('/')[0]}" if "@" in url else None,
         "SECRET_KEY_set": bool(settings.SECRET_KEY),
         "DEBUG": settings.DEBUG,
         "CORS_ORIGINS": settings.CORS_ORIGINS,
     }
 
 
-@app.get("/debug/db")
-async def debug_db():
+@app.get("/health/database")
+async def health_database():
     from app.database import get_engine
     from sqlalchemy import text
     try:
         engine = get_engine()
         async with engine.connect() as conn:
-            result = await conn.execute(text("SELECT 1"))
-            val = result.scalar()
-            return {"status": "connected", "test_query": val}
+            await conn.execute(text("SELECT 1"))
+        return {"status": "healthy", "database": "connected"}
     except Exception as e:
-        return {"status": "error", "detail": str(e), "type": type(e).__name__}
+        logger.error(f"Database health check failed: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "database": "disconnected", "detail": str(e)},
+        )

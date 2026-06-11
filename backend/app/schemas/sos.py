@@ -20,3 +20,4 @@ class SOSResponse(BaseModel):
     message: Optional[str] = None
     created_at: datetime
     notified_contacts: Optional[list] = None
+    email_notification: Optional[dict] = None
