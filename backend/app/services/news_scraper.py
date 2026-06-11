@@ -13,35 +13,18 @@ class NewsScraper:
         "Bengaluru": [
             "https://timesofindia.indiatimes.com/rssfeeds/-2128838597.cms",
             "https://www.thehindu.com/news/cities/bangalore/feeder/default.rss",
-            "https://www.deccanherald.com/rss/karnataka/bengaluru.rss",
+            "https://www.deccanherald.com/feed",
         ],
         "Mysuru": [
-            "https://www.thehindu.com/news/national/karnataka/mysore/feeder/default.rss",
             "https://timesofindia.indiatimes.com/rssfeeds/1078976505.cms",
         ],
         "Mangaluru": [
-            "https://www.thehindu.com/news/national/karnataka/mangalore/feeder/default.rss",
             "https://timesofindia.indiatimes.com/rssfeeds/2452244.cms",
-        ],
-        "Hubballi": [
-            "https://www.thehindu.com/news/national/karnataka/hubli/feeder/default.rss",
-        ],
-        "Belagavi": [
-            "https://www.thehindu.com/news/national/karnataka/belagavi/feeder/default.rss",
-        ],
-        "Dharwad": [
-            "https://www.thehindu.com/news/national/karnataka/dharwad/feeder/default.rss",
-        ],
-        "Kalaburagi": [
-            "https://www.thehindu.com/news/national/karnataka/kalaburagi/feeder/default.rss",
-        ],
-        "Shivamogga": [
-            "https://www.thehindu.com/news/national/karnataka/shivamogga/feeder/default.rss",
         ],
         "Karnataka": [
             "https://www.thehindu.com/news/national/karnataka/feeder/default.rss",
             "https://timesofindia.indiatimes.com/rssfeeds/2962392.cms",
-            "https://www.deccanherald.com/rss/karnataka.rss",
+            "https://www.deccanherald.com/feed",
         ],
     }
 

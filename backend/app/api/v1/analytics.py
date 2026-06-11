@@ -77,7 +77,7 @@ async def get_dashboard(
         for r in by_type.fetchall()
     ]
 
-    thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
     risk_trend_rows = await db.execute(
         text("""
             SELECT DATE(created_at) as dt, AVG(confidence_score) as avg_conf
@@ -172,7 +172,7 @@ async def get_trends(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),
 ):
-    start = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    start = datetime.now(timezone.utc) - timedelta(days=days)
     result = await db.execute(
         text("""
             SELECT DATE(created_at) as dt,
@@ -209,7 +209,7 @@ async def get_report_analytics(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),
 ):
-    start = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    start = datetime.now(timezone.utc) - timedelta(days=days)
     result = await db.execute(
         text("""
             SELECT DATE(created_at) as dt,
