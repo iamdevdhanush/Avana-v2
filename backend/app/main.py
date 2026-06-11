@@ -141,7 +141,20 @@ async def data_error_handler(request: Request, exc: DataError):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.exception(f"Unhandled exception on {request.method} {request.url.path}")
+    detail = str(exc) if settings.DEBUG else "Internal server error"
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error", "request_id": getattr(request.state, "request_id", "unknown")},
+        content={"detail": detail, "request_id": getattr(request.state, "request_id", "unknown")},
     )
+
+
+@app.get("/debug/env")
+async def debug_env():
+    url = settings.DATABASE_URL or ""
+    return {
+        "DATABASE_URL_set": bool(settings.DATABASE_URL),
+        "DATABASE_URL_prefix": url.split("://")[0] if url else None,
+        "SECRET_KEY_set": bool(settings.SECRET_KEY),
+        "DEBUG": settings.DEBUG,
+        "CORS_ORIGINS": settings.CORS_ORIGINS,
+    }
