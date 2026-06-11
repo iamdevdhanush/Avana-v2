@@ -109,9 +109,9 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     try:
         result = await db.execute(select(User).where(User.email == body.email))
         user = result.scalar_one_or_none()
-    except Exception:
+    except Exception as e:
         logger.exception("Database error during login lookup")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error during login")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database error: {e}")
 
     if not user or not user.hashed_password:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
