@@ -1,15 +1,18 @@
 import * as React from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
   Navigation, Flag, AlertTriangle, Map as MapIcon,
   TrendingUp, TrendingDown, Minus, ChevronRight,
-  Loader2, Shield, Activity,
+  Shield, Activity, Clock, Bot, Zap,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { riskApi, incidentApi, analyticsApi } from '@/services/api'
-import type { RiskScore, Incident, CrimeTrend } from '@/types'
+import type { LastIntelligenceRun } from '@/types'
 import { formatRelativeTime } from '@/lib/utils'
+import { DataFreshness } from '@/components/DataFreshness'
+import { SystemHealthBar } from '@/components/SystemHealthBar'
 
 const SEVERITY_CONFIG = {
   low:      { color: '#22C55E', bg: 'rgba(34,197,94,0.12)',    dot: '#22C55E' },
@@ -19,11 +22,11 @@ const SEVERITY_CONFIG = {
 }
 
 const CATEGORY_CONFIG = {
-  safe:     { label: 'SAFE',     color: '#22C55E', bg: 'rgba(34,197,94,0.12)',    ring: '#22C55E' },
-  low:      { label: 'LOW RISK', color: '#22C55E', bg: 'rgba(34,197,94,0.12)',    ring: '#22C55E' },
-  moderate: { label: 'MODERATE', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)',   ring: '#F59E0B' },
-  high:     { label: 'HIGH RISK',color: '#EF4444', bg: 'rgba(239,68,68,0.12)',    ring: '#EF4444' },
-  critical: { label: 'CRITICAL', color: '#7C3AED', bg: 'rgba(124,58,237,0.12)',   ring: '#7C3AED' },
+  safe:     { label: 'SAFE',      color: '#22C55E', bg: 'rgba(34,197,94,0.12)',    ring: '#22C55E' },
+  low:      { label: 'LOW RISK',  color: '#22C55E', bg: 'rgba(34,197,94,0.12)',    ring: '#22C55E' },
+  moderate: { label: 'MODERATE',  color: '#F59E0B', bg: 'rgba(245,158,11,0.12)',   ring: '#F59E0B' },
+  high:     { label: 'HIGH RISK', color: '#EF4444', bg: 'rgba(239,68,68,0.12)',    ring: '#EF4444' },
+  critical: { label: 'CRITICAL',  color: '#7C3AED', bg: 'rgba(124,58,237,0.12)',   ring: '#7C3AED' },
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -37,73 +40,65 @@ export function HomeScreen() {
   const { user } = useAuthStore()
   const { position, isLoading: geoLoading } = useGeolocation()
 
-  const [riskScore, setRiskScore] = React.useState<RiskScore | null>(null)
-  const [riskLoading, setRiskLoading] = React.useState(true)
-  const [incidents, setIncidents] = React.useState<Incident[]>([])
-  const [incidentsLoading, setIncidentsLoading] = React.useState(true)
-  const [trends, setTrends] = React.useState<CrimeTrend[]>([])
-  const [trendsLoading, setTrendsLoading] = React.useState(true)
-  const [prevWeekTotal, setPrevWeekTotal] = React.useState<number | null>(null)
-
   const firstName = user?.name?.split(' ')[0] || 'there'
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
-  // Fetch risk score when location is available
+  // Read last intelligence run from localStorage (stored when admin triggers pipeline)
+  const [lastIntelRun, setLastIntelRun] = React.useState<LastIntelligenceRun | null>(null)
   React.useEffect(() => {
-    if (!position.latitude || !position.longitude) return
-    setRiskLoading(true)
-    riskApi.getRiskScore(position.latitude, position.longitude)
-      .then(setRiskScore)
-      .catch(() => {})
-      .finally(() => setRiskLoading(false))
-  }, [position.latitude, position.longitude])
-
-  // Fetch nearby incidents when location is available
-  React.useEffect(() => {
-    if (!position.latitude || !position.longitude) return
-    setIncidentsLoading(true)
-    incidentApi.getIncidents({
-      lat: position.latitude,
-      lng: position.longitude,
-      radius: 5,
-      limit: 5,
-    })
-      .then((res) => setIncidents(res.data))
-      .catch(() => {})
-      .finally(() => setIncidentsLoading(false))
-  }, [position.latitude, position.longitude])
-
-  // Fetch 14-day trends to compute weekly comparison
-  React.useEffect(() => {
-    setTrendsLoading(true)
-    analyticsApi.getCrimeTrends({ days: 14 })
-      .then((data) => {
-        setTrends(data)
-        // Compare last 7 days vs previous 7 days
-        if (data.length >= 14) {
-          const thisWeek = data.slice(-7).reduce((s, d) => s + d.count, 0)
-          const lastWeek = data.slice(-14, -7).reduce((s, d) => s + d.count, 0)
-          setPrevWeekTotal(lastWeek - thisWeek) // positive = safer
-        }
-      })
-      .catch(() => {})
-      .finally(() => setTrendsLoading(false))
+    const stored = localStorage.getItem('avana_last_intel_run')
+    if (stored) {
+      try { setLastIntelRun(JSON.parse(stored) as LastIntelligenceRun) }
+      catch { /* ignore */ }
+    }
   }, [])
 
-  // Derived stats from trends
+  // Risk score — React Query
+  const { data: riskScore, isLoading: riskLoading } = useQuery({
+    queryKey: ['risk-score', position.latitude, position.longitude],
+    queryFn: () => riskApi.getRiskScore(position.latitude!, position.longitude!),
+    enabled: !!(position.latitude && position.longitude),
+    staleTime: 2 * 60_000,
+    retry: 1,
+  })
+
+  // Nearby incidents — React Query
+  const { data: incidentsRes, isLoading: incidentsLoading } = useQuery({
+    queryKey: ['incidents-nearby', position.latitude, position.longitude],
+    queryFn: () => incidentApi.getIncidents({
+      lat: position.latitude!,
+      lng: position.longitude!,
+      radius: 5,
+      limit: 5,
+    }),
+    enabled: !!(position.latitude && position.longitude),
+    staleTime: 2 * 60_000,
+    retry: 1,
+  })
+  const incidents = incidentsRes?.data ?? []
+
+  // 14-day trends — React Query
+  const { data: trends = [], isLoading: trendsLoading } = useQuery({
+    queryKey: ['crime-trends-14'],
+    queryFn: () => analyticsApi.getCrimeTrends({ days: 14 }),
+    staleTime: 5 * 60_000,
+    retry: 1,
+  })
+
+  // Compute weekly comparison from real trend data
   const thisWeekTotal = trends.slice(-7).reduce((s, d) => s + d.count, 0)
-  const thisWeekHigh = trends.slice(-7).filter(d => (d.type === 'high_risk')).length
+  const prevWeekDiff = trends.length >= 14
+    ? trends.slice(-14, -7).reduce((s, d) => s + d.count, 0) - thisWeekTotal
+    : null
 
   // Risk ring values
   const catConfig = riskScore
     ? CATEGORY_CONFIG[riskScore.category] || CATEGORY_CONFIG.moderate
     : null
   const scoreVal = riskScore ? Math.round(riskScore.score * 100) : null
-  const circumference = 2 * Math.PI * 44 // r=44
-  const offset = riskScore
-    ? circumference - (riskScore.score * circumference)
-    : circumference
+  const circumference = 2 * Math.PI * 44
+  const offset = riskScore ? circumference - (riskScore.score * circumference) : circumference
 
   return (
     <div className="min-h-full pb-safe">
@@ -121,13 +116,8 @@ export function HomeScreen() {
                   : 'Enable location for safety data'}
             </p>
           </div>
-          <div
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium"
-            style={{ background: '#1A1A24', border: '1px solid #1F2937', color: '#6B7280' }}
-          >
-            <div className="w-1.5 h-1.5 rounded-full bg-[#22C55E] animate-pulse" />
-            Live
-          </div>
+          {/* System health compact chip */}
+          <SystemHealthBar compact />
         </div>
 
         {/* ── SECTION 1: Current Safety Status ── */}
@@ -146,11 +136,11 @@ export function HomeScreen() {
 
           {riskLoading || (!position.latitude && geoLoading) ? (
             <div className="flex items-center gap-5">
-              <div className="w-24 h-24 rounded-full bg-[#111827] animate-shimmer shrink-0" />
+              <div className="w-24 h-24 rounded-full bg-[#111827] animate-pulse shrink-0" />
               <div className="space-y-2 flex-1">
-                <div className="h-4 w-24 rounded bg-[#111827] animate-shimmer" />
-                <div className="h-8 w-16 rounded bg-[#111827] animate-shimmer" />
-                <div className="h-3 w-32 rounded bg-[#111827] animate-shimmer" />
+                <div className="h-4 w-24 rounded bg-[#111827] animate-pulse" />
+                <div className="h-8 w-16 rounded bg-[#111827] animate-pulse" />
+                <div className="h-3 w-32 rounded bg-[#111827] animate-pulse" />
               </div>
             </div>
           ) : riskScore ? (
@@ -158,10 +148,7 @@ export function HomeScreen() {
               {/* Score ring */}
               <div className="relative shrink-0">
                 <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
-                  <circle
-                    cx="50" cy="50" r="44"
-                    fill="none" stroke="#1F2937" strokeWidth="8"
-                  />
+                  <circle cx="50" cy="50" r="44" fill="none" stroke="#1F2937" strokeWidth="8" />
                   <circle
                     cx="50" cy="50" r="44"
                     fill="none"
@@ -191,14 +178,14 @@ export function HomeScreen() {
                   {catConfig?.label}
                 </span>
                 {/* Trend indicator */}
-                {prevWeekTotal !== null && (
+                {prevWeekDiff !== null && (
                   <div className="flex items-center gap-1.5 mt-1">
-                    {prevWeekTotal > 0 ? (
+                    {prevWeekDiff > 0 ? (
                       <>
                         <TrendingUp className="h-3.5 w-3.5 text-[#22C55E]" />
                         <span className="text-xs text-[#22C55E] font-medium">Safer than last week</span>
                       </>
-                    ) : prevWeekTotal < 0 ? (
+                    ) : prevWeekDiff < 0 ? (
                       <>
                         <TrendingDown className="h-3.5 w-3.5 text-[#EF4444]" />
                         <span className="text-xs text-[#EF4444] font-medium">More incidents this week</span>
@@ -231,7 +218,64 @@ export function HomeScreen() {
           )}
         </div>
 
-        {/* ── SECTION 2: Nearby Alerts ── */}
+        {/* ── SECTION 2: Intelligence Status ── */}
+        <div
+          className="rounded-2xl p-4 animate-fade-in-up"
+          style={{
+            background: '#1A1A24',
+            border: '1px solid rgba(168,85,247,0.15)',
+            animationDelay: '90ms',
+            animationFillMode: 'both',
+          }}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Bot className="h-4 w-4 text-[#A855F7]" />
+            <p className="text-xs font-semibold text-[#F9FAFB] uppercase tracking-widest">Intelligence Status</p>
+          </div>
+
+          {lastIntelRun ? (
+            <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg px-3 py-2.5 text-center" style={{ background: '#111827' }}>
+                  <p className="text-lg font-black text-[#A855F7]">{lastIntelRun.incidentsSaved}</p>
+                  <p className="text-[10px] text-[#6B7280]">Incidents Saved</p>
+                </div>
+                <div className="rounded-lg px-3 py-2.5 text-center" style={{ background: '#111827' }}>
+                  <p className="text-lg font-black text-[#22C55E]">
+                    {lastIntelRun.durationSeconds != null
+                      ? `${Math.round(lastIntelRun.durationSeconds)}s`
+                      : '—'}
+                  </p>
+                  <p className="text-[10px] text-[#6B7280]">Duration</p>
+                </div>
+                <div className="rounded-lg px-3 py-2.5 text-center" style={{ background: '#111827' }}>
+                  <p className="text-lg font-black"
+                    style={{ color: lastIntelRun.errors?.length ? '#EF4444' : '#22C55E' }}>
+                    {lastIntelRun.errors?.length || 0}
+                  </p>
+                  <p className="text-[10px] text-[#6B7280]">Errors</p>
+                </div>
+              </div>
+              <DataFreshness
+                timestamp={lastIntelRun.ranAt}
+                label="Intelligence Updated"
+                warnAfterHours={24}
+              />
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 py-1">
+              <Clock className="h-4 w-4 text-[#374151] shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-[#4B5563]">Intelligence Pipeline Has Not Run Yet</p>
+                <p className="text-xs text-[#374151] mt-0.5">
+                  Ask an admin to run the News Intelligence pipeline.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── SECTION 3: Nearby Alerts ── */}
         <div
           className="rounded-2xl overflow-hidden animate-fade-in-up"
           style={{ background: '#1A1A24', border: '1px solid #1F2937', animationDelay: '120ms', animationFillMode: 'both' }}
@@ -254,9 +298,13 @@ export function HomeScreen() {
               {[0,1,2].map(i => (
                 <div key={i} className="flex gap-3 items-center">
                   <div className="w-2 h-2 rounded-full bg-[#1F2937] shrink-0" />
-                  <div className="flex-1 h-4 rounded bg-[#111827] animate-shimmer" />
+                  <div className="flex-1 h-4 rounded bg-[#111827] animate-pulse" />
                 </div>
               ))}
+            </div>
+          ) : !position.latitude ? (
+            <div className="px-4 py-6 text-center">
+              <p className="text-sm text-[#6B7280]">Enable location to see nearby alerts</p>
             </div>
           ) : incidents.length === 0 ? (
             <div className="px-4 py-6 text-center">
@@ -297,7 +345,7 @@ export function HomeScreen() {
           )}
         </div>
 
-        {/* ── SECTION 3: Quick Actions ── */}
+        {/* ── SECTION 4: Quick Actions ── */}
         <div
           className="animate-fade-in-up"
           style={{ animationDelay: '180ms', animationFillMode: 'both' }}
@@ -344,7 +392,7 @@ export function HomeScreen() {
           </div>
         </div>
 
-        {/* ── SECTION 4: Heatmap Preview ── */}
+        {/* ── SECTION 5: Heatmap → Real district summaries ── */}
         <button
           onClick={() => navigate('/map')}
           className="w-full rounded-2xl overflow-hidden text-left transition-all hover:scale-[1.01] active:scale-[0.99] animate-fade-in-up"
@@ -355,44 +403,19 @@ export function HomeScreen() {
             animationFillMode: 'both',
           }}
         >
-          {/* Simulated heatmap preview */}
-          <div
-            className="h-28 relative overflow-hidden"
-            style={{
-              background: 'linear-gradient(135deg, #09090B 0%, #111827 50%, #1A1A24 100%)',
-            }}
-          >
-            {/* Heatmap blobs */}
-            <div className="absolute inset-0 pointer-events-none">
-              <div className="absolute top-2 left-8 w-16 h-16 rounded-full opacity-40"
-                style={{ background: 'radial-gradient(circle, #EF4444 0%, transparent 70%)' }} />
-              <div className="absolute top-6 left-24 w-12 h-12 rounded-full opacity-30"
-                style={{ background: 'radial-gradient(circle, #F97316 0%, transparent 70%)' }} />
-              <div className="absolute bottom-2 right-8 w-20 h-20 rounded-full opacity-35"
-                style={{ background: 'radial-gradient(circle, #EAB308 0%, transparent 70%)' }} />
-              <div className="absolute bottom-4 right-28 w-10 h-10 rounded-full opacity-50"
-                style={{ background: 'radial-gradient(circle, #22C55E 0%, transparent 70%)' }} />
-              <div className="absolute top-4 right-12 w-8 h-8 rounded-full opacity-40"
-                style={{ background: 'radial-gradient(circle, #22C55E 0%, transparent 70%)' }} />
-            </div>
-            {/* Overlay label */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-xs font-semibold text-[#F9FAFB] bg-black/40 backdrop-blur-sm px-3 py-1.5 rounded-full flex items-center gap-1.5">
-                <Activity className="h-3.5 w-3.5 text-[#A855F7]" />
-                Open Live Heatmap
-              </span>
-            </div>
-          </div>
-          <div className="px-4 py-3 flex items-center justify-between border-t border-[#1F2937]">
-            <div>
+          <div className="px-4 py-4 flex items-center gap-3 border-b border-[#1F2937]">
+            <MapIcon className="h-4 w-4 text-[#A855F7]" />
+            <div className="flex-1">
               <p className="text-sm font-semibold text-[#F9FAFB]">Safety Heatmap</p>
-              <p className="text-xs text-[#6B7280]">Real-time risk zone visualization</p>
+              <p className="text-xs text-[#6B7280]">Open map for live risk zone visualization</p>
             </div>
             <ChevronRight className="h-4 w-4 text-[#6B7280]" />
           </div>
+          {/* Real district risk summary instead of fake blobs */}
+          <RealHeatmapPreview position={position} />
         </button>
 
-        {/* ── SECTION 5: Weekly Intelligence Summary ── */}
+        {/* ── SECTION 6: Weekly Intelligence Summary (real data only) ── */}
         {!trendsLoading && trends.length > 0 && (
           <div
             className="rounded-2xl p-4 animate-fade-in-up"
@@ -421,10 +444,10 @@ export function HomeScreen() {
                 color="#F59E0B"
               />
               <SummaryCard
-                value={prevWeekTotal !== null && prevWeekTotal > 0 ? 1 : 0}
+                value={0}
                 label="Trend"
-                sub={prevWeekTotal !== null && prevWeekTotal > 0 ? 'Improving' : prevWeekTotal !== null && prevWeekTotal < 0 ? 'Worsening' : 'Stable'}
-                color={prevWeekTotal !== null && prevWeekTotal > 0 ? '#22C55E' : prevWeekTotal !== null && prevWeekTotal < 0 ? '#EF4444' : '#F59E0B'}
+                sub={prevWeekDiff !== null && prevWeekDiff > 0 ? 'Improving' : prevWeekDiff !== null && prevWeekDiff < 0 ? 'Worsening' : 'Stable'}
+                color={prevWeekDiff !== null && prevWeekDiff > 0 ? '#22C55E' : prevWeekDiff !== null && prevWeekDiff < 0 ? '#EF4444' : '#F59E0B'}
                 isText
               />
             </div>
@@ -434,6 +457,26 @@ export function HomeScreen() {
     </div>
   )
 }
+
+// Real heatmap preview: links to map, prompts location if not available
+function RealHeatmapPreview({ position }: { position: { latitude: number | null; longitude: number | null } }) {
+  return (
+    <div
+      className="px-4 py-3 flex items-center justify-between"
+      style={{ background: 'rgba(168,85,247,0.04)' }}
+    >
+      <div className="flex items-center gap-1.5">
+        <Zap className="h-3.5 w-3.5 text-[#A855F7]" />
+        <span className="text-xs text-[#6B7280]">
+          {position.latitude ? 'Tap to see live risk zones near you' : 'Enable location to see risk zones'}
+        </span>
+      </div>
+      <span className="text-[10px] font-semibold text-[#A855F7]">Open Map →</span>
+    </div>
+  )
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function QuickAction({
   icon, label, description, onClick, color, bg, border, pulse,

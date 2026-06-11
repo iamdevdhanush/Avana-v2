@@ -1,6 +1,6 @@
 import * as React from 'react'
 import {
-  Layers, Locate, SlidersHorizontal, X, Loader2, ChevronDown,
+  Layers, Loader2,
 } from 'lucide-react'
 import { SafetyMap } from '@/components/map/SafetyMap'
 import { MapControls } from '@/components/map/MapControls'
@@ -11,7 +11,7 @@ import { useMapStore } from '@/store/mapStore'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { useHeatmap } from '@/hooks/useHeatmap'
 import { incidentApi } from '@/services/api'
-import { cn } from '@/lib/utils'
+import { DataFreshness } from '@/components/DataFreshness'
 import type { Incident } from '@/types'
 
 const INCIDENT_TYPE_FILTERS = [
@@ -34,13 +34,17 @@ const LAYER_TOGGLES = [
 export function MapScreen() {
   const { bounds, zoom, selectedLocation, setSelectedLocation } = useMapStore()
   const { position } = useGeolocation()
-  const { points: heatmapPoints, isLoading: heatmapLoading } = useHeatmap(bounds, zoom)
+  const {
+    points: heatmapPoints,
+    generatedAt,          // ← now surfaced from hook
+    districtSummaries,
+    isLoading: heatmapLoading,
+  } = useHeatmap(bounds, zoom)
 
   const [incidents, setIncidents] = React.useState<Incident[]>([])
   const [incidentsLoading, setIncidentsLoading] = React.useState(false)
 
   const [showRoutePanel, setShowRoutePanel] = React.useState(false)
-  const [showFilters, setShowFilters] = React.useState(false)
   const [showLayers, setShowLayers] = React.useState(false)
   const [selectedType, setSelectedType] = React.useState('all')
 
@@ -103,7 +107,6 @@ export function MapScreen() {
 
       {/* ── Floating Filter Bar (top center) ── */}
       <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] flex flex-col items-center gap-2 w-full max-w-sm px-3">
-        {/* Type filter chips */}
         <div className="flex gap-1.5 overflow-x-auto pb-0.5 w-full scrollbar-hide">
           {INCIDENT_TYPE_FILTERS.map((t) => (
             <button
@@ -170,9 +173,55 @@ export function MapScreen() {
         )}
       </div>
 
-      {/* ── Heatmap Legend (bottom left, above scale) ── */}
+      {/* ── Heatmap Freshness (bottom left, above legend) ── */}
       {layers.heatmap && (
-        <div className="absolute bottom-24 left-3 z-[1000]">
+        <div className="absolute bottom-28 left-3 z-[1000] space-y-2">
+          {/* Data freshness indicator */}
+          <div
+            className="px-2.5 py-1.5 rounded-xl"
+            style={{
+              background: 'rgba(9,9,11,0.88)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              backdropFilter: 'blur(12px)',
+            }}
+          >
+            <DataFreshness
+              timestamp={generatedAt}
+              label="Heatmap"
+              warnAfterHours={24}
+              compact
+            />
+          </div>
+
+          {/* District summaries if available */}
+          {districtSummaries.length > 0 && (
+            <div
+              className="px-2.5 py-2 rounded-xl space-y-1.5"
+              style={{
+                background: 'rgba(9,9,11,0.88)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                backdropFilter: 'blur(12px)',
+                maxWidth: '180px',
+              }}
+            >
+              <p className="text-[10px] font-semibold text-[#6B7280] uppercase tracking-wide">District Risk</p>
+              {districtSummaries.slice(0, 3).map((s) => (
+                <div key={s.district} className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-[#9CA3AF] truncate">{s.district.split(' ')[0]}</span>
+                  <span
+                    className="text-[10px] font-semibold shrink-0"
+                    style={{
+                      color: s.trend === 'worsening' ? '#EF4444' : s.trend === 'improving' ? '#22C55E' : '#F59E0B',
+                    }}
+                  >
+                    {s.trend === 'worsening' ? '↑' : s.trend === 'improving' ? '↓' : '→'}
+                    {' '}{s.trend}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
           <HeatmapLegend visible={layers.heatmap} />
         </div>
       )}

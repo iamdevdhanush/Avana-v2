@@ -1,7 +1,7 @@
 import * as React from 'react'
 import {
-  MessageSquare, ThumbsUp, MapPin, Clock, ChevronDown,
-  Send, Loader2, Filter,
+  MessageSquare, ThumbsUp, MapPin, Shield, ChevronDown,
+  Send, Loader2, Filter, CheckCircle,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useUIStore } from '@/store/uiStore'
@@ -75,14 +75,15 @@ export function CommunityScreen() {
   }, [hasMore, loading, page, fetchPosts])
 
   const handleCreatePost = async () => {
-    if (!newPostTitle.trim() || !newPostContent.trim()) return
+    if (!newPostContent.trim()) return
     setSubmitting(true)
     try {
       await communityApi.createPost({
-        title: newPostTitle,
         content: newPostContent,
-        tags: [],
-        isIncident: false,
+        post_type: 'general_discussion',
+        latitude: null,
+        longitude: null,
+        location_name: null,
       })
       setNewPostTitle('')
       setNewPostContent('')
@@ -253,9 +254,14 @@ export function CommunityScreen() {
                       {post.userName?.split(' ').map((n) => n[0]).join('').toUpperCase() || 'U'}
                     </AvatarFallback>
                   </Avatar>
-                  <div>
-                    <p className="text-sm font-medium">{post.userName}</p>
-                    <p className="text-xs text-muted-foreground">{formatRelativeTime(post.createdAt)}</p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium">{post.userName}</p>
+                      {post.isVerified && (
+                        <CheckCircle className="h-3.5 w-3.5 text-[#22C55E] shrink-0" fill="currentColor" style={{ opacity: 0.8 }} />
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{post.createdAt ? new Date(post.createdAt).toLocaleString() : ''}</p>
                   </div>
                   {post.isIncident && (
                     <Badge variant="warning" className="ml-auto text-[10px]">Incident</Badge>
@@ -279,7 +285,18 @@ export function CommunityScreen() {
                 </div>
 
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <button className="flex items-center gap-1 hover:text-foreground transition-colors">
+                  <button
+                    className="flex items-center gap-1 hover:text-foreground transition-colors"
+                    onClick={async () => {
+                      try {
+                        const result = await communityApi.vote(post.id, 'up')
+                        setPosts(prev => prev.map(p => p.id === post.id
+                          ? { ...p, upvotes: result.upvotes }
+                          : p
+                        ))
+                      } catch { /* ignore */ }
+                    }}
+                  >
                     <ThumbsUp className="h-3.5 w-3.5" />
                     {post.upvotes}
                   </button>

@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { HeatmapPoint, MapBounds } from '@/types'
+import type { HeatmapPoint, HeatmapResponse, DistrictSummary, MapBounds } from '@/types'
 import { riskApi } from '@/services/api'
 import { useMapStore } from '@/store/mapStore'
 
 interface UseHeatmapReturn {
   points: HeatmapPoint[]
+  generatedAt: string | null
+  districtSummaries: DistrictSummary[]
   isLoading: boolean
   error: string | null
   refresh: () => void
@@ -15,7 +17,7 @@ export function useHeatmap(
   zoom: number,
   debounceMs: number = 500
 ): UseHeatmapReturn {
-  const [points, setPoints] = useState<HeatmapPoint[]>([])
+  const [response, setResponse] = useState<HeatmapResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -29,8 +31,8 @@ export function useHeatmap(
 
     try {
       const data = await riskApi.getHeatmapBounds(bounds, zoom)
-      setPoints(data)
-      setHeatmapPoints(data)
+      setResponse(data)
+      setHeatmapPoints(data.points)
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -63,5 +65,12 @@ export function useHeatmap(
     fetchHeatmap()
   }, [fetchHeatmap])
 
-  return { points, isLoading, error, refresh }
+  return {
+    points: response?.points ?? [],
+    generatedAt: response?.generatedAt ?? null,
+    districtSummaries: response?.districtSummaries ?? [],
+    isLoading,
+    error,
+    refresh,
+  }
 }

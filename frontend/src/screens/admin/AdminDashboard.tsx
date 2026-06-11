@@ -1,7 +1,7 @@
 import * as React from 'react'
 import {
   AlertTriangle, Users, Activity, Shield, TrendingUp,
-  BarChart3, ChevronRight, Loader2, Bot, Clock, CheckCircle,
+  BarChart3, ChevronRight, Bot, Clock, CheckCircle,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -11,7 +11,9 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { adminApi, analyticsApi } from '@/services/api'
 import { formatRelativeTime } from '@/lib/utils'
-import type { DashboardStats, DistrictAnalytics, CrimeTrend } from '@/types'
+import type { DashboardStats, DistrictAnalytics, CrimeTrend, LastIntelligenceRun } from '@/types'
+import { SystemHealthBar } from '@/components/SystemHealthBar'
+import { DataFreshness } from '@/components/DataFreshness'
 
 const CHART_COLORS = ['#A855F7', '#EC4899', '#22C55E', '#F59E0B', '#EF4444', '#3B82F6']
 
@@ -31,8 +33,14 @@ export function AdminDashboard() {
   const [districtData, setDistrictData] = React.useState<DistrictAnalytics[]>([])
   const [trends, setTrends] = React.useState<CrimeTrend[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  const [lastIntelRun, setLastIntelRun] = React.useState<LastIntelligenceRun | null>(null)
 
   React.useEffect(() => {
+    // Read last pipeline run from localStorage (set by AdminAgents after a run)
+    const stored = localStorage.getItem('avana_last_intel_run')
+    if (stored) {
+      try { setLastIntelRun(JSON.parse(stored) as LastIntelligenceRun) } catch { /* ignore */ }
+    }
     Promise.all([
       adminApi.getDashboardStats(),
       analyticsApi.getDistrictAnalytics(),
@@ -107,6 +115,9 @@ export function AdminDashboard() {
       style={{ background: '#09090B' }}
     >
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 space-y-6">
+
+        {/* System Health Bar */}
+        <SystemHealthBar />
 
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -346,7 +357,7 @@ export function AdminDashboard() {
             </div>
           </div>
 
-          {/* AI Intelligence Runs */}
+          {/* Intelligence Pipeline — real last run data */}
           <div
             className="rounded-2xl p-5"
             style={{ background: '#1A1A24', border: '1px solid rgba(168,85,247,0.2)' }}
@@ -356,62 +367,44 @@ export function AdminDashboard() {
               <h2 className="text-sm font-bold text-[#F9FAFB]">Intelligence Pipeline</h2>
             </div>
 
-            {isLoading ? (
+            {lastIntelRun ? (
               <div className="space-y-3">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="h-12 rounded-xl bg-[#111827] animate-shimmer" />
-                ))}
-              </div>
-            ) : lastRunInfo ? (
-              <div className="space-y-3">
-                <div
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl"
-                  style={{ background: '#111827' }}
-                >
-                  <CheckCircle className="h-4 w-4 text-[#22C55E] shrink-0" />
-                  <div className="flex-1">
-                    <p className="text-xs text-[#6B7280]">Verified Reports</p>
-                    <p className="text-lg font-bold text-[#F9FAFB]">{lastRunInfo.verifiedCount}</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-xl px-3 py-2.5 text-center" style={{ background: '#111827' }}>
+                    <p className="text-xl font-black text-[#A855F7]">{lastIntelRun.incidentsSaved}</p>
+                    <p className="text-[10px] text-[#6B7280]">Saved</p>
                   </div>
-                </div>
-                <div
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl"
-                  style={{ background: '#111827' }}
-                >
-                  <BarChart3 className="h-4 w-4 text-[#A855F7] shrink-0" />
-                  <div className="flex-1">
-                    <p className="text-xs text-[#6B7280]">Total Processed</p>
-                    <p className="text-lg font-bold text-[#F9FAFB]">{lastRunInfo.totalProcessed.toLocaleString()}</p>
-                  </div>
-                </div>
-                <div
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl"
-                  style={{ background: '#111827' }}
-                >
-                  <Activity className="h-4 w-4 text-[#22C55E] shrink-0" />
-                  <div className="flex-1">
-                    <p className="text-xs text-[#6B7280]">Confidence Score</p>
-                    <p className="text-lg font-bold" style={{ color: '#22C55E' }}>
-                      {lastRunInfo.confidenceRate}%
+                  <div className="rounded-xl px-3 py-2.5 text-center" style={{ background: '#111827' }}>
+                    <p className="text-xl font-black text-[#22C55E]">
+                      {lastIntelRun.durationSeconds != null ? `${Math.round(lastIntelRun.durationSeconds)}s` : '—'}
                     </p>
+                    <p className="text-[10px] text-[#6B7280]">Duration</p>
+                  </div>
+                  <div className="rounded-xl px-3 py-2.5 text-center" style={{ background: '#111827' }}>
+                    <p className="text-xl font-black" style={{ color: lastIntelRun.errors?.length ? '#EF4444' : '#22C55E' }}>
+                      {lastIntelRun.errors?.length || 0}
+                    </p>
+                    <p className="text-[10px] text-[#6B7280]">Errors</p>
                   </div>
                 </div>
+                <DataFreshness timestamp={lastIntelRun.ranAt} label="Last Run" warnAfterHours={24} />
                 <button
                   onClick={() => navigate('/admin/agents')}
                   className="w-full py-2.5 rounded-xl text-xs font-bold text-[#A855F7] border border-[#A855F7]/30 hover:bg-[#A855F7]/10 transition-colors"
                 >
-                  View Agent Pipeline →
+                  Manage Pipeline →
                 </button>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-40 text-center">
-                <Bot className="h-10 w-10 text-[#374151] mb-3" />
-                <p className="text-sm text-[#6B7280]">No agent runs yet</p>
+                <Clock className="h-10 w-10 text-[#374151] mb-3" />
+                <p className="text-sm font-semibold text-[#6B7280]">Intelligence Pipeline Has Not Run Yet</p>
+                <p className="text-xs text-[#374151] mt-1">No pipeline runs recorded.</p>
                 <button
                   onClick={() => navigate('/admin/agents')}
                   className="mt-3 px-4 py-2 rounded-xl text-xs font-semibold text-[#A855F7] border border-[#A855F7]/30"
                 >
-                  Run Now
+                  Run Pipeline Now
                 </button>
               </div>
             )}

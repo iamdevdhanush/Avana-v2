@@ -1,10 +1,11 @@
 import * as React from 'react'
 import {
-  Navigation, ArrowDown, MapPin, Loader2, Shield, Zap, Scale, X,
+  Navigation, ArrowDown, Loader2, Shield, Zap, Scale, X, Info,
 } from 'lucide-react'
 import { cn, formatDistance, formatDuration } from '@/lib/utils'
 import { useRouteSafety } from '@/hooks/useRouteSafety'
 import { useGeolocation } from '@/hooks/useGeolocation'
+import type { RouteOption } from '@/types'
 
 interface RoutePanelProps {
   onClose?: () => void
@@ -48,27 +49,32 @@ function getRiskLabel(score: number): { label: string; color: string } {
   return { label: 'High Risk', color: '#EF4444' }
 }
 
-// Human-readable route reasoning (based on route type)
-function getRouteReasons(type: 'safest' | 'fastest' | 'balanced'): string[] {
-  const reasons: Record<typeof type, string[]> = {
-    safest: [
-      'Avoids recent incident zones',
-      'Stays near police stations',
-      'Routes through well-lit main roads',
-      'Avoids isolated areas at this hour',
-    ],
-    fastest: [
-      'Shortest travel time available',
-      'Uses main arterial roads',
-      'Moderate safety profile',
-    ],
-    balanced: [
-      'Balances speed and safety',
-      'Avoids the highest-risk segments',
-      'Prefers roads with higher footfall',
-    ],
+// Generate trust explanation from REAL backend data
+function getRouteTrustInfo(opt: RouteOption, type: 'safest' | 'fastest' | 'balanced'): string[] {
+  const reasons: string[] = []
+  const safetyPct = Math.round(opt.safetyScore)
+
+  if (safetyPct > 0) {
+    reasons.push(`Safety score: ${safetyPct}/100 for this route`)
   }
-  return reasons[type]
+
+  if (opt.segments && opt.segments.length > 0) {
+    const highRiskSegs = opt.segments.filter(s => s.riskLevel === 'high').length
+    const medRiskSegs = opt.segments.filter(s => s.riskLevel === 'medium').length
+    const lowRiskSegs = opt.segments.filter(s => s.riskLevel === 'low').length
+    if (highRiskSegs > 0) reasons.push(`Passes through ${highRiskSegs} elevated-risk segment${highRiskSegs > 1 ? 's' : ''}`)
+    if (medRiskSegs > 0) reasons.push(`Includes ${medRiskSegs} moderate-risk segment${medRiskSegs > 1 ? 's' : ''}`)
+    if (lowRiskSegs > 0) reasons.push(`${lowRiskSegs} low-risk segment${lowRiskSegs > 1 ? 's' : ''} on this path`)
+  }
+
+  if (reasons.length === 0) {
+    // Fallback when no segment data returned by backend
+    if (type === 'safest') reasons.push('Backend selected this as the safest calculated path')
+    else if (type === 'fastest') reasons.push('Backend selected this as the fastest calculated path')
+    else reasons.push('Backend balanced safety and time for this route')
+  }
+
+  return reasons
 }
 
 export function RoutePanel({ onClose }: RoutePanelProps) {
@@ -232,15 +238,19 @@ export function RoutePanel({ onClose }: RoutePanelProps) {
               })}
             </div>
 
-            {/* Why this route */}
+            {/* Why this route — real data */}
             {selectedRoute && (
               <div
                 className="rounded-xl p-3"
                 style={{ background: '#111827', border: '1px solid #1F2937' }}
               >
-                <p className="text-xs font-bold text-[#F9FAFB] mb-2">Why this route?</p>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Info className="h-3.5 w-3.5 text-[#A855F7]" />
+                  <p className="text-xs font-bold text-[#F9FAFB]">Why this route?</p>
+                  <span className="ml-auto text-[10px] text-[#4B5563]">Route Engine: OSRM</span>
+                </div>
                 <ul className="space-y-1.5">
-                  {getRouteReasons(activeType).map((reason, i) => (
+                  {getRouteTrustInfo(routeResult[activeType], activeType).map((reason, i) => (
                     <li key={i} className="flex items-start gap-2">
                       <div className="w-1.5 h-1.5 rounded-full bg-[#A855F7] mt-1.5 shrink-0" />
                       <span className="text-[11px] text-[#9CA3AF] leading-relaxed">{reason}</span>

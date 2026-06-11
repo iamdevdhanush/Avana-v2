@@ -12,12 +12,19 @@ import type {
   CrimeTrend,
   DistrictAnalytics,
   HeatmapPoint,
+  HeatmapResponse,
   MapBounds,
   ApiResponse,
+  EmergencyContact,
+  SystemHealth,
+  ServiceHealth,
+  AgentStatus,
+  PipelineRunResult,
 } from '@/types'
 
 const RAW = import.meta.env.VITE_API_URL || ''
 const API_URL = RAW.endsWith('/api/v1') ? RAW : RAW ? `${RAW}/api/v1` : '/api/v1'
+const BASE_URL = API_URL.replace(/\/api\/v1$/, '')
 
 let isRefreshing = false
 let failedQueue: Array<{
@@ -127,13 +134,26 @@ function mapUser(u: Record<string, unknown>): User {
   }
 }
 
+function mapEmergencyContact(c: Record<string, unknown>): EmergencyContact {
+  return {
+    id: String(c.id || ''),
+    name: String(c.name || ''),
+    phone: String(c.phone || ''),
+    relationship: String(c.relationship || ''),
+    isPrimary: Boolean(c.is_primary),
+    notifyOnSOS: Boolean(c.is_primary),
+  }
+}
+
+// Backend source values: news, user_report (not user_reported)
 function mapIncident(i: Record<string, unknown>): Incident {
+  const rawSource = String(i.source || 'user_report')
   return {
     id: String(i.id || ''),
     type: (String(i.incident_type || 'other') as Incident['type']),
     severity: (String(i.severity || 'medium') as Incident['severity']),
-    source: (String(i.source || 'user_reported') as Incident['source']),
-    status: (String(i.status || 'reported') as Incident['status']),
+    source: (rawSource as Incident['source']),
+    status: (String(i.status || 'pending') as Incident['status']),
     title: String(i.title || ''),
     description: String(i.description || ''),
     location: {
@@ -141,6 +161,9 @@ function mapIncident(i: Record<string, unknown>): Incident {
       lng: Number(i.longitude || 0),
       address: i.address ? String(i.address) : undefined,
     },
+    district: i.district ? String(i.district) : undefined,
+    city: i.city ? String(i.city) : undefined,
+    confidenceScore: i.confidence_score != null ? Number(i.confidence_score) : undefined,
     reportedBy: String(i.user_id || ''),
     reportedAt: i.created_at ? String(i.created_at) : new Date().toISOString(),
     updatedAt: i.updated_at ? String(i.updated_at) : new Date().toISOString(),
@@ -162,11 +185,13 @@ function mapCategory(cat: string): RiskScore['category'] {
 
 function mapBackendRouteOption(opt: Record<string, unknown>): RouteOption {
   return {
+    type: String(opt.type || ''),
     geometry: (opt.geometry || []) as [number, number][],
     segments: ((opt.segments || []) as Record<string, unknown>[]).map((s) => ({
       startIndex: 0,
       endIndex: 0,
       safetyScore: Number(s.safety_score || 0),
+      riskCategory: String(s.risk_category || ''),
       riskLevel: (s.risk_category === 'High Risk' || s.risk_category === 'Critical' ? 'high' :
                   s.risk_category === 'Moderate' ? 'medium' : 'low') as 'low' | 'medium' | 'high',
       incidents: [],
@@ -186,6 +211,7 @@ function mapPost(p: Record<string, unknown>): CommunityPost {
     userAvatar: userData.avatar_url ? String(userData.avatar_url) : undefined,
     title: '',
     content: String(p.content || ''),
+    postType: p.post_type ? String(p.post_type) : undefined,
     location: p.latitude ? {
       lat: Number(p.latitude || 0),
       lng: Number(p.longitude || 0),
@@ -196,6 +222,7 @@ function mapPost(p: Record<string, unknown>): CommunityPost {
     downvotes: Number(p.downvotes || 0),
     commentCount: Number(p.comment_count || 0),
     isIncident: false,
+    isVerified: Boolean(p.is_verified),
     createdAt: p.created_at ? String(p.created_at) : new Date().toISOString(),
     updatedAt: p.updated_at ? String(p.updated_at) : new Date().toISOString(),
   }
@@ -212,6 +239,9 @@ function mapComment(c: Record<string, unknown>): Comment {
     content: String(c.content || ''),
     upvotes: Number(c.upvotes || 0),
     createdAt: c.created_at ? String(c.created_at) : new Date().toISOString(),
+    replies: c.replies
+      ? ((c.replies as Record<string, unknown>[]) || []).map(mapComment)
+      : undefined,
   }
 }
 
@@ -221,16 +251,21 @@ function mapSOS(e: Record<string, unknown>): SOSEvent {
     userId: String(e.user_id || ''),
     location: { lat: Number(e.latitude || 0), lng: Number(e.longitude || 0) },
     timestamp: e.created_at ? String(e.created_at) : new Date().toISOString(),
-    status: (String(e.status || 'active') as SOSEvent['status']),
+    // Backend values: triggered, acknowledged, resolved, false_alarm
+    status: (String(e.status || 'triggered') as SOSEvent['status']),
     notes: e.message ? String(e.message) : undefined,
+    notifiedContacts: e.notified_contacts
+      ? ((e.notified_contacts as Record<string, unknown>[]) || []).map((c) => ({
+          name: String(c.name || ''),
+          phone: String(c.phone || ''),
+          relationship: String(c.relationship || ''),
+        }))
+      : undefined,
   }
 }
 
-// Backend has a middleware that wraps all JSON responses in { data: ..., status: 'success' }.
-// So we always extract .data first.
-
 function storeAuth(inner: Record<string, unknown>): { token: string; user: User } {
-  const token = String(inner.token || '')
+  const token = String(inner.token || inner.access_token || '')
   const refreshToken = String(inner.refresh_token || '')
   const user = mapUser(inner.user as Record<string, unknown>)
   if (token) localStorage.setItem('avana_token', token)
@@ -238,6 +273,8 @@ function storeAuth(inner: Record<string, unknown>): { token: string; user: User 
   if (user) localStorage.setItem('avana_user', JSON.stringify(user))
   return { token, user }
 }
+
+// ── Auth API ─────────────────────────────────────────────────────────────────
 
 export const authApi = {
   login: async (email: string, password: string): Promise<{ token: string; user: User }> => {
@@ -286,7 +323,35 @@ export const authApi = {
       return mapUser((raw.data || raw) as Record<string, unknown>)
     } catch (error) { handleError(error) }
   },
+
+  getEmergencyContacts: async (): Promise<EmergencyContact[]> => {
+    try {
+      const { data: raw } = await api.get('/auth/emergency-contacts')
+      const items = (raw.data || raw) as Record<string, unknown>[]
+      return (Array.isArray(items) ? items : []).map(mapEmergencyContact)
+    } catch (error) { handleError(error) }
+  },
+
+  addEmergencyContact: async (contact: {
+    name: string
+    phone: string
+    relationship: string
+    is_primary?: boolean
+  }): Promise<EmergencyContact> => {
+    try {
+      const { data: raw } = await api.post('/auth/emergency-contacts', contact)
+      return mapEmergencyContact((raw.data || raw) as Record<string, unknown>)
+    } catch (error) { handleError(error) }
+  },
+
+  deleteEmergencyContact: async (id: string): Promise<void> => {
+    try {
+      await api.delete(`/auth/emergency-contacts/${id}`)
+    } catch (error) { handleError(error) }
+  },
 }
+
+// ── Incident API ──────────────────────────────────────────────────────────────
 
 export const incidentApi = {
   getIncidents: async (params?: {
@@ -338,6 +403,8 @@ export const incidentApi = {
   },
 }
 
+// ── Risk API ──────────────────────────────────────────────────────────────────
+
 export const riskApi = {
   getRiskScore: async (lat: number, lng: number): Promise<RiskScore> => {
     try {
@@ -355,7 +422,8 @@ export const riskApi = {
     } catch (error) { handleError(error) }
   },
 
-  getHeatmapBounds: async (bounds: MapBounds, zoom: number): Promise<HeatmapPoint[]> => {
+  // Returns the full heatmap response including generated_at and district_summaries
+  getHeatmapBounds: async (bounds: MapBounds, zoom: number): Promise<HeatmapResponse> => {
     try {
       const { data: raw } = await api.post('/risk/heatmap', {
         sw_lat: bounds.south, sw_lng: bounds.west,
@@ -364,14 +432,33 @@ export const riskApi = {
       })
       const inner = (raw.data || raw) as Record<string, unknown>
       const points = (inner.points || []) as Record<string, unknown>[]
-      return points.map((p) => ({
-        lat: Number(p.latitude || 0),
-        lng: Number(p.longitude || 0),
-        weight: Number(p.weight || 0),
-      }))
+      const summaries = (inner.district_summaries || []) as Record<string, unknown>[]
+      return {
+        points: points.map((p) => ({
+          lat: Number(p.latitude || 0),
+          lng: Number(p.longitude || 0),
+          weight: Number(p.weight || 0),
+          riskCategory: p.risk_category ? String(p.risk_category) : undefined,
+        })),
+        generatedAt: inner.generated_at ? String(inner.generated_at) : null,
+        districtSummaries: summaries.map((s) => ({
+          district: String(s.district || ''),
+          avgScore: Number(s.avg_score || 0),
+          totalIncidents: Number(s.total_incidents || 0),
+          trend: (String(s.trend || 'stable') as 'improving' | 'stable' | 'worsening'),
+        })),
+      }
     } catch (error) { handleError(error) }
   },
+
+  // Legacy points-only accessor for components that don't need metadata
+  getHeatmapPoints: async (bounds: MapBounds, zoom: number): Promise<HeatmapPoint[]> => {
+    const resp = await riskApi.getHeatmapBounds(bounds, zoom)
+    return resp.points
+  },
 }
+
+// ── Route API ─────────────────────────────────────────────────────────────────
 
 export const routeApi = {
   getSafeRoute: async (source: { lat: number; lng: number }, destination: { lat: number; lng: number }): Promise<RouteResult> => {
@@ -388,12 +475,26 @@ export const routeApi = {
       }
     } catch (error) { handleError(error) }
   },
+
+  getHealth: async (): Promise<{ status: string; service: string; provider: string }> => {
+    try {
+      const { data: raw } = await api.get('/route/health')
+      return (raw.data || raw) as { status: string; service: string; provider: string }
+    } catch (error) { handleError(error) }
+  },
 }
 
+// ── SOS API ───────────────────────────────────────────────────────────────────
+
 export const sosApi = {
-  triggerSOS: async (location: { lat: number; lng: number }, contacts?: string[]): Promise<SOSEvent> => {
+  triggerSOS: async (location: { lat: number; lng: number }, message?: string): Promise<SOSEvent> => {
     try {
-      const { data } = await api.post('/sos', { latitude: location.lat, longitude: location.lng })
+      const { data } = await api.post('/sos', {
+        latitude: location.lat,
+        longitude: location.lng,
+        message: message || 'SOS triggered',
+        emergency_type: 'safety_threat',
+      })
       return mapSOS((data.data || data) as Record<string, unknown>)
     } catch (error) { handleError(error) }
   },
@@ -407,6 +508,8 @@ export const sosApi = {
   },
 }
 
+// ── Community API ─────────────────────────────────────────────────────────────
+
 export const communityApi = {
   getPosts: async (params?: { page?: number; limit?: number; tag?: string }): Promise<ApiResponse<CommunityPost[]>> => {
     try {
@@ -415,18 +518,8 @@ export const communityApi = {
       if (params?.limit) bp['page_size'] = params.limit
       if (params?.tag) bp['post_type'] = params.tag
       const { data } = await api.get('/community/posts', { params: bp })
-      if (data.data && Array.isArray(data.data)) {
-        return { data: data.data.map(mapPost), status: 'success' }
-      }
-      if (Array.isArray(data.data)) {
-        return { data: data.data.map(mapPost), status: 'success' }
-      }
-      const inner = (data.data || data) as Record<string, unknown>
-      const items = (inner.items || data || []) as Record<string, unknown>[]
-      return {
-        data: (Array.isArray(items) ? items : []).map(mapPost),
-        status: 'success',
-      }
+      const arr = data.data && Array.isArray(data.data) ? data.data : []
+      return { data: arr.map(mapPost), status: 'success' }
     } catch (error) { handleError(error) }
   },
 
@@ -445,24 +538,25 @@ export const communityApi = {
     } catch (error) { handleError(error) }
   },
 
-  createComment: async (postId: string, content: string): Promise<Comment> => {
+  createComment: async (postId: string, content: string, parentId?: string): Promise<Comment> => {
     try {
-      const { data } = await api.post(`/community/posts/${postId}/comments`, { content })
+      const { data } = await api.post(`/community/posts/${postId}/comments`, { content, parent_id: parentId || null })
       return mapComment((data.data || data) as Record<string, unknown>)
+    } catch (error) { handleError(error) }
+  },
+
+  vote: async (postId: string, voteType: 'up' | 'down'): Promise<{ upvotes: number; downvotes: number }> => {
+    try {
+      const { data } = await api.post(`/community/posts/${postId}/vote`, null, { params: { vote_type: voteType } })
+      const inner = (data.data || data) as Record<string, unknown>
+      return { upvotes: Number(inner.upvotes || 0), downvotes: Number(inner.downvotes || 0) }
     } catch (error) { handleError(error) }
   },
 }
 
-export type PipelineName = 'intelligence' | 'community' | 'risk'
-export type PipelineStatus = {
-  pipelines: Array<{ name: string; status: string; schedule_minutes?: number | null }>
-  pipeline: string
-}
-export type PipelineResult = {
-  pipeline: string
-  status: string
-  result: Record<string, unknown>
-}
+// ── Admin API ─────────────────────────────────────────────────────────────────
+
+export type PipelineName = 'news' | 'community' | 'heatmap'
 
 export const adminApi = {
   listUsers: async (p?: { page?: number; page_size?: number }): Promise<{ items: User[]; total: number; page: number; page_size: number }> => {
@@ -497,8 +591,8 @@ export const adminApi = {
           id: String(a.id || ''),
           type: (String(a.type || 'other') as Incident['type']),
           severity: (String(a.severity || 'medium') as Incident['severity']),
-          source: 'user_reported' as Incident['source'],
-          status: (String(a.status || 'reported') as Incident['status']),
+          source: 'user_report' as Incident['source'],
+          status: (String(a.status || 'pending') as Incident['status']),
           title: '',
           description: '',
           location: { lat: 0, lng: 0 },
@@ -515,9 +609,9 @@ export const adminApi = {
           highRisk: Number(d.high_risk || 0),
           mediumRisk: Number(d.medium_risk || 0),
           lowRisk: Number(d.low_risk || 0),
-      critical: Number(d.critical || 0),
-    })),
-    crimeTrends: ((inner.risk_trend || []) as Record<string, unknown>[]).map((t) => ({
+          critical: Number(d.critical || 0),
+        })),
+        crimeTrends: ((inner.risk_trend || []) as Record<string, unknown>[]).map((t) => ({
           date: String(t.date || ''),
           count: Number(t.value || 0),
         })),
@@ -527,13 +621,17 @@ export const adminApi = {
 
   moderateIncident: async (incidentId: string, action: string, notes?: string): Promise<Incident> => {
     try {
-      const { data } = await api.put(`/admin/incidents/${incidentId}/moderate`, { status: action, moderation_notes: notes })
+      const { data } = await api.put(`/admin/incidents/${incidentId}/moderate`, {
+        incident_id: incidentId,
+        status: action,
+        moderation_notes: notes,
+      })
       const d = (data.data || data) as Record<string, unknown>
       return {
         id: String(d.id || incidentId),
         type: 'other' as Incident['type'],
         severity: 'medium' as Incident['severity'],
-        source: 'user_reported' as Incident['source'],
+        source: 'user_report' as Incident['source'],
         status: (String(d.status || action) as Incident['status']),
         title: '', description: '',
         location: { lat: 0, lng: 0 },
@@ -557,20 +655,46 @@ export const adminApi = {
     } catch (error) { handleError(error) }
   },
 
-  getPipelineStatus: async (): Promise<PipelineStatus> => {
+  // Correct endpoint: GET /admin/agents/status
+  getAgentStatus: async (): Promise<AgentStatus[]> => {
     try {
-      const { data: raw } = await api.get('/admin/pipeline/status')
-      return (raw.data || raw) as PipelineStatus
+      const { data: raw } = await api.get('/admin/agents/status')
+      const inner = (raw.data || raw) as Record<string, unknown>
+      const agents = (inner.agents || []) as Record<string, unknown>[]
+      return agents.map((a) => ({
+        name: String(a.name || ''),
+        status: (String(a.status || 'idle') as AgentStatus['status']),
+        scheduledMinutes: a.schedule_minutes != null ? Number(a.schedule_minutes) : null,
+      }))
     } catch (error) { handleError(error) }
   },
 
-  triggerPipeline: async (name: PipelineName): Promise<PipelineResult> => {
+  // Correct endpoint: POST /admin/agents/run/{agent_name}
+  // Valid names: news, community, heatmap
+  runAgent: async (agentName: PipelineName): Promise<PipelineRunResult> => {
     try {
-      const { data: raw } = await api.post(`/admin/pipeline/run/${name}`)
-      return (raw.data || raw) as PipelineResult
+      const { data: raw } = await api.post(`/admin/agents/run/${agentName}`)
+      const outer = (raw.data || raw) as Record<string, unknown>
+      const result = (outer.result || outer) as Record<string, unknown>
+      const runResult: PipelineRunResult = {
+        agent: agentName,
+        status: (String(result.status || outer.status || 'completed') as PipelineRunResult['status']),
+        incidentsSaved: Number(result.incidents_saved || 0),
+        errors: (result.errors || []) as string[],
+        durationSeconds: Number(result.duration_seconds || 0),
+        articlesProcessed: Number(result.articles_fetched || 0),
+        ranAt: new Date().toISOString(),
+      }
+      // Persist to localStorage so HomeScreen can show last run info
+      if (agentName === 'news') {
+        localStorage.setItem('avana_last_intel_run', JSON.stringify(runResult))
+      }
+      return runResult
     } catch (error) { handleError(error) }
   },
 }
+
+// ── Chat API ──────────────────────────────────────────────────────────────────
 
 export const chatApi = {
   sendMessage: async (message: string, context?: { lat?: number; lng?: number; incidentId?: string }): Promise<string> => {
@@ -585,14 +709,20 @@ export const chatApi = {
     } catch (error) { handleError(error) }
   },
 
-  getTestResponse: async (): Promise<string> => {
+  getTestResponse: async (): Promise<{ status: string; response?: string; detail?: string }> => {
     try {
       const { data } = await api.get('/chat/test')
       const inner = (data.data || data) as Record<string, unknown>
-      return String(inner.response || inner.detail || 'AI unavailable')
+      return {
+        status: String(inner.status || 'unavailable'),
+        response: inner.response ? String(inner.response) : undefined,
+        detail: inner.detail ? String(inner.detail) : undefined,
+      }
     } catch (error) { handleError(error) }
   },
 }
+
+// ── Analytics API ─────────────────────────────────────────────────────────────
 
 export const analyticsApi = {
   getDistrictAnalytics: async (): Promise<DistrictAnalytics[]> => {
@@ -623,6 +753,89 @@ export const analyticsApi = {
         type: t.high_risk && Number(t.high_risk) > 0 ? 'high_risk' : undefined,
       }))
     } catch (error) { handleError(error) }
+  },
+}
+
+// ── Health API ────────────────────────────────────────────────────────────────
+
+export const healthApi = {
+  // GET /health — overall backend health
+  getBackendHealth: async (): Promise<ServiceHealth> => {
+    const checkedAt = new Date().toISOString()
+    const t0 = Date.now()
+    try {
+      const { data: raw } = await axios.get(`${BASE_URL}/health`, { timeout: 5000 })
+      const responseMs = Date.now() - t0
+      const inner = (raw.data || raw) as Record<string, unknown>
+      const status = String(inner.status || 'healthy')
+      return {
+        name: 'Backend',
+        status: status === 'healthy' ? (responseMs > 2000 ? 'degraded' : 'healthy') : 'degraded',
+        responseMs,
+        checkedAt,
+        detail: `v${String(inner.version || '?')}`,
+      }
+    } catch {
+      return { name: 'Backend', status: 'offline', checkedAt, detail: 'Unreachable' }
+    }
+  },
+
+  // GET /api/v1/route/health — route engine / OSRM
+  getRouteHealth: async (): Promise<ServiceHealth> => {
+    const checkedAt = new Date().toISOString()
+    const t0 = Date.now()
+    try {
+      const { data: raw } = await api.get('/route/health', { timeout: 5000 })
+      const responseMs = Date.now() - t0
+      const inner = (raw.data || raw) as Record<string, unknown>
+      const status = String(inner.status || 'healthy')
+      return {
+        name: 'Route Engine',
+        status: status === 'healthy' ? (responseMs > 2000 ? 'degraded' : 'healthy') : 'degraded',
+        responseMs,
+        checkedAt,
+        detail: String(inner.provider || 'OSRM'),
+      }
+    } catch {
+      return { name: 'Route Engine', status: 'offline', checkedAt, detail: 'OSRM unreachable' }
+    }
+  },
+
+  // GET /api/v1/chat/test — Gemini AI availability
+  getAIHealth: async (): Promise<ServiceHealth> => {
+    const checkedAt = new Date().toISOString()
+    const t0 = Date.now()
+    try {
+      const { data: raw } = await api.get('/chat/test', { timeout: 8000 })
+      const responseMs = Date.now() - t0
+      const inner = (raw.data || raw) as Record<string, unknown>
+      const status = String(inner.status || 'unavailable')
+      return {
+        name: 'Gemini AI',
+        status: status === 'ok' ? (responseMs > 3000 ? 'degraded' : 'healthy') : 'degraded',
+        responseMs,
+        checkedAt,
+        detail: status === 'ok' ? 'Operational' : (String(inner.detail || 'Not configured')),
+      }
+    } catch {
+      return { name: 'Gemini AI', status: 'offline', checkedAt, detail: 'Service unavailable' }
+    }
+  },
+
+  getSystemHealth: async (): Promise<SystemHealth> => {
+    const [backend, routeEngine, aiService] = await Promise.allSettled([
+      healthApi.getBackendHealth(),
+      healthApi.getRouteHealth(),
+      healthApi.getAIHealth(),
+    ])
+    const now = new Date().toISOString()
+    const offline: ServiceHealth = { name: 'Unknown', status: 'offline', checkedAt: now }
+    return {
+      backend: backend.status === 'fulfilled' ? backend.value : { ...offline, name: 'Backend' },
+      routeEngine: routeEngine.status === 'fulfilled' ? routeEngine.value : { ...offline, name: 'Route Engine' },
+      aiService: aiService.status === 'fulfilled' ? aiService.value : { ...offline, name: 'Gemini AI' },
+      lastChecked: now,
+    }
   },
 }
 
