@@ -62,6 +62,9 @@ async def list_posts(
                 id=p.user.id,
                 name=p.user.name,
                 avatar_url=p.user.avatar_url,
+                is_verified=p.user.is_verified,
+                reputation=p.user.reputation or 0,
+                role=p.user.role.value if hasattr(p.user.role, "value") else p.user.role,
             ),
             comment_count=len(p.comments) if p.comments else 0,
             created_at=p.created_at,
@@ -103,7 +106,7 @@ async def create_post(
         post_type=post.post_type,
         upvotes=post.upvotes,
         is_verified=post.is_verified,
-        user=UserBriefResponse(id=user.id, name=user.name, avatar_url=user.avatar_url),
+        user=UserBriefResponse(id=user.id, name=user.name, avatar_url=user.avatar_url, is_verified=user.is_verified, reputation=user.reputation or 0, role=user.role.value if hasattr(user.role, "value") else user.role),
         comment_count=0,
         created_at=post.created_at,
     )
@@ -134,13 +137,16 @@ async def get_post(
         upvotes=post.upvotes,
         is_verified=post.is_verified,
         user=UserBriefResponse(
-            id=post.user.id,
-            name=post.user.name,
-            avatar_url=post.user.avatar_url,
-        ),
-        comment_count=len(post.comments) if post.comments else 0,
-        created_at=post.created_at,
-    )
+                id=post.user.id,
+                name=post.user.name,
+                avatar_url=post.user.avatar_url,
+                is_verified=post.user.is_verified,
+                reputation=post.user.reputation or 0,
+                role=post.user.role.value if hasattr(post.user.role, "value") else post.user.role,
+            ),
+            comment_count=len(post.comments) if post.comments else 0,
+            created_at=post.created_at,
+        )
 
 
 @router.post("/posts/{id}/vote")
@@ -154,6 +160,9 @@ async def vote_post(
     post = result.scalar_one_or_none()
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    if post.user_id == user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot vote on your own post")
 
     if vote_type not in ("up", "down"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid vote type")
@@ -178,6 +187,14 @@ async def vote_post(
     voters[voter_id] = vote_type
     post.voters = voters
     post.updated_at = datetime.now(timezone.utc)
+
+    post_author = await db.get(User, post.user_id)
+    if post_author:
+        if vote_type == "up":
+            post_author.reputation = (post_author.reputation or 0) + 1
+        else:
+            post_author.reputation = max(0, (post_author.reputation or 0) - 1)
+
     await db.flush()
     return {"id": str(post.id), "upvotes": post.upvotes, "downvotes": post.downvotes}
 
@@ -205,7 +222,7 @@ async def get_comments(
             id=reply.id,
             content=reply.content,
             upvotes=reply.upvotes,
-            user=UserBriefResponse(id=reply.user.id, name=reply.user.name, avatar_url=reply.user.avatar_url),
+            user=UserBriefResponse(id=reply.user.id, name=reply.user.name, avatar_url=reply.user.avatar_url, is_verified=reply.user.is_verified, reputation=reply.user.reputation or 0, role=reply.user.role.value if hasattr(reply.user.role, "value") else reply.user.role),
             created_at=reply.created_at,
             replies=[
                 _build_reply(r) for r in (reply.replies or [])
@@ -217,7 +234,7 @@ async def get_comments(
             id=c.id,
             content=c.content,
             upvotes=c.upvotes,
-            user=UserBriefResponse(id=c.user.id, name=c.user.name, avatar_url=c.user.avatar_url),
+            user=UserBriefResponse(id=c.user.id, name=c.user.name, avatar_url=c.user.avatar_url, is_verified=c.user.is_verified, reputation=c.user.reputation or 0, role=c.user.role.value if hasattr(c.user.role, "value") else c.user.role),
             created_at=c.created_at,
             replies=[_build_reply(r) for r in (c.replies or [])] if c.replies else None,
         )

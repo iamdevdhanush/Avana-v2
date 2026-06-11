@@ -10,9 +10,10 @@ from app.models.hospital import Hospital
 from app.models.community_post import CommunityPost
 from app.models.comment import Comment
 from app.models.audit_log import AuditLog
+from app.models.geocoding_cache import GeocodingCache
 
 __all__ = [
     "User", "Location", "Incident", "RiskScore", "SafetyReport",
     "SOSEvent", "NewsArticle", "PoliceStation", "Hospital",
-    "CommunityPost", "Comment", "AuditLog",
+    "CommunityPost", "Comment", "AuditLog", "GeocodingCache",
 ]

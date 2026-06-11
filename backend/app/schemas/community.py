@@ -19,6 +19,9 @@ class UserBriefResponse(BaseModel):
     id: UUID
     name: Optional[str] = None
     avatar_url: Optional[str] = None
+    is_verified: bool = False
+    reputation: int = 0
+    role: str = "user"
 
 
 class CommunityPostResponse(BaseModel):

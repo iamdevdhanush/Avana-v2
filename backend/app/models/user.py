@@ -25,6 +25,7 @@ class User(Base):
     phone: Mapped[str] = mapped_column(String(20), nullable=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    reputation: Mapped[int] = mapped_column(default=0)
     supabase_uid: Mapped[str] = mapped_column(String(255), unique=True, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

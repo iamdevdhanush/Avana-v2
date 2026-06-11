@@ -176,3 +176,27 @@ async def health_database():
             status_code=503,
             content={"status": "unhealthy", "database": "disconnected", "detail": str(e)},
         )
+
+
+@app.get("/health/gemini")
+async def health_gemini():
+    from app.services.gemini import gemini_service
+    if not gemini_service.is_available():
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "error": gemini_service._init_error or "Gemini not available"},
+        )
+    try:
+        result = gemini_service.generate("Respond with only the word: OK")
+        if result and "OK" in result:
+            return {"status": "healthy", "model": "gemini-2.0-flash"}
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "error": "Gemini test request returned unexpected response"},
+        )
+    except Exception as e:
+        logger.error(f"Gemini health check failed: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "error": str(e)},
+        )

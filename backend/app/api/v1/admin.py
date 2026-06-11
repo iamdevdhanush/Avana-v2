@@ -1,12 +1,13 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import require_admin
+from app.models.audit_log import AuditLog
 from app.models.incident import Incident, IncidentStatus
 from app.models.safety_report import SafetyReport
 from app.models.user import User, UserRole
@@ -21,6 +22,30 @@ from app.pipeline.risk import recalculate_all_risk_scores
 from app.pipeline.heatmap import generate_heatmap_for_bounds
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+async def _log_admin_action(
+    request: Request,
+    db: AsyncSession,
+    admin: User,
+    action: str,
+    resource_type: str,
+    resource_id: str = None,
+    details: dict = None,
+    severity: str = "info",
+):
+    log = AuditLog(
+        id=uuid.uuid4(),
+        user_id=admin.id,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        details=details or {},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent", "")[:500],
+        severity=severity,
+    )
+    db.add(log)
 
 
 @router.get("/dashboard", response_model=DashboardStats)
@@ -164,6 +189,7 @@ async def list_incidents_moderation(
 @router.put("/incidents/{id}/moderate")
 async def moderate_incident(
     id: uuid.UUID,
+    request: Request,
     body: ModerateAction,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
@@ -180,6 +206,9 @@ async def moderate_incident(
 
     incident.moderated_by = admin.id
     incident.updated_at = datetime.now(timezone.utc)
+    await _log_admin_action(request, db, admin, "moderate_incident", "incident", str(incident.id), {
+        "status": body.status, "notes": body.moderation_notes,
+    })
     await db.flush()
 
     return {
@@ -231,6 +260,7 @@ async def list_users(
 @router.put("/users/{id}/role")
 async def change_user_role(
     id: uuid.UUID,
+    request: Request,
     role: str = Query(..., description="New role: user, admin, moderator"),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
@@ -240,12 +270,16 @@ async def change_user_role(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    old_role = user.role.value if hasattr(user.role, "value") else user.role
     try:
         user.role = UserRole(role)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid role: {role}")
 
     user.updated_at = datetime.now(timezone.utc)
+    await _log_admin_action(request, db, admin, "change_user_role", "user", str(user.id), {
+        "old_role": old_role, "new_role": role,
+    })
     await db.flush()
     return {"id": str(user.id), "role": user.role.value if hasattr(user.role, "value") else user.role}
 
@@ -253,6 +287,7 @@ async def change_user_role(
 @router.put("/users/{id}/status")
 async def change_user_status(
     id: uuid.UUID,
+    request: Request,
     is_active: bool = Query(..., description="Set user active or inactive"),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
@@ -262,8 +297,12 @@ async def change_user_status(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    old_status = user.is_active
     user.is_active = is_active
     user.updated_at = datetime.now(timezone.utc)
+    await _log_admin_action(request, db, admin, "change_user_status", "user", str(user.id), {
+        "old_active": old_status, "new_active": is_active,
+    })
     await db.flush()
     return {"id": str(user.id), "is_active": user.is_active}
 
@@ -286,7 +325,9 @@ async def get_pipeline_status(
 @router.post("/pipeline/run/{pipeline_name}")
 async def run_pipeline(
     pipeline_name: str,
+    request: Request,
     admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
     pipeline_map = {
         "intelligence": run_intelligence_pipeline,
@@ -303,8 +344,10 @@ async def run_pipeline(
 
     try:
         result = await runner()
+        await _log_admin_action(request, db, admin, "run_pipeline", "pipeline", pipeline_name)
         return {"pipeline": pipeline_name, "status": "triggered", "result": result}
     except Exception as e:
+        await _log_admin_action(request, db, admin, "run_pipeline_failed", "pipeline", pipeline_name, {"error": str(e)}, "error")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Pipeline run failed: {str(e)}",
