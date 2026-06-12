@@ -21,9 +21,19 @@ from app.models.incident import (
     Incident, IncidentType, IncidentSeverity,
     IncidentSource, IncidentStatus,
 )
-from app.services.gemini import gemini_service
+from app.services.gemini import gemini_service, GeminiQuotaExceeded
 from app.services.news_scraper import NewsScraper
 from app.services.nominatim import NominatimService
+
+_MOCK_CACHE = None
+
+
+def _get_mock_incidents():
+    global _MOCK_CACHE
+    if _MOCK_CACHE is None:
+        from app.pipeline.intelligence_mock import get_mock_incidents
+        _MOCK_CACHE = get_mock_incidents()
+    return _MOCK_CACHE
 
 logger = logging.getLogger(__name__)
 
@@ -308,27 +318,62 @@ async def save_incidents(incidents: List[dict]) -> dict:
 
 async def run_intelligence_pipeline() -> dict:
     start = time.time()
+    logger.info("[PIPELINE_START] run_intelligence_pipeline entered")
     logger.info("=" * 60)
     logger.info("INTELLIGENCE PIPELINE STARTED")
     logger.info("=" * 60)
     results = {"steps": {}}
-    try:
-        articles = await fetch_all_articles()
-        results["steps"]["fetch"] = {"status": "ok", "count": len(articles)}
-        logger.info(f"Step 1 complete: {len(articles)} articles fetched")
-    except Exception as e:
-        results["steps"]["fetch"] = {"status": "failed", "error": str(e)}
-        logger.error(f"Step 1 failed: {e}")
-        return results
-    all_incidents = []
-    for article in articles:
+
+    from app.config import settings
+
+    mock_mode = settings.MOCK_INTELLIGENCE_MODE
+
+    if mock_mode:
+        logger.info("MOCK_INTELLIGENCE_MODE enabled — using mock data")
+    else:
+        reason = gemini_service.get_unavailable_reason()
+        if reason:
+            elapsed = round(time.time() - start, 2)
+            logger.info(f"[PIPELINE_SKIPPED] Gemini {reason} — skipping ({elapsed}s)")
+            logger.info(f"Gemini {reason} — skipping pipeline ({elapsed}s)")
+            results["status"] = "skipped"
+            results["reason"] = f"gemini_{reason.lower()}"
+            results["duration_seconds"] = elapsed
+            logger.info("[PIPELINE_END] Skipped — no work done")
+            return results
+
+    if mock_mode:
+        all_incidents = _get_mock_incidents()
+        results["steps"]["fetch"] = {"status": "ok", "count": 5, "source": "mock"}
+        logger.info(f"Step 1 complete: 5 mock articles generated")
+    else:
         try:
-            extracted = await extract_incidents_from_article(article)
-            all_incidents.extend(extracted)
+            articles = await fetch_all_articles()
+            results["steps"]["fetch"] = {"status": "ok", "count": len(articles)}
+            logger.info(f"Step 1 complete: {len(articles)} articles fetched")
         except Exception as e:
-            logger.warning(f"Extraction failed for '{article.get('title', '')}': {e}")
-    results["steps"]["extract"] = {"status": "ok", "count": len(all_incidents)}
-    logger.info(f"Step 2 complete: {len(all_incidents)} incidents extracted")
+            results["steps"]["fetch"] = {"status": "failed", "error": str(e)}
+            logger.error(f"Step 1 failed: {e}")
+            results["duration_seconds"] = round(time.time() - start, 2)
+            logger.info("[PIPELINE_END] Fetch failed — pipeline aborted")
+            return results
+
+    if mock_mode:
+        results["steps"]["extract"] = {"status": "ok", "count": len(all_incidents), "source": "mock"}
+        logger.info(f"Step 2 complete: {len(all_incidents)} mock incidents extracted")
+    else:
+        all_incidents = []
+        for article in articles:
+            try:
+                extracted = await extract_incidents_from_article(article)
+                all_incidents.extend(extracted)
+            except GeminiQuotaExceeded:
+                logger.error("Gemini quota exhausted — failing pipeline immediately")
+                raise
+            except Exception as e:
+                logger.warning(f"Extraction failed for '{article.get('title', '')}': {e}")
+        results["steps"]["extract"] = {"status": "ok", "count": len(all_incidents)}
+        logger.info(f"Step 2 complete: {len(all_incidents)} incidents extracted")
     try:
         all_incidents = await geocode_incidents(all_incidents)
         geocoded = sum(1 for i in all_incidents if i.get("latitude") is not None)
@@ -345,6 +390,7 @@ async def run_intelligence_pipeline() -> dict:
         results["steps"]["save"] = {"status": "failed", "error": str(e)}
         logger.error(f"Step 4 failed: {e}")
         results["duration_seconds"] = round(time.time() - start, 2)
+        logger.info("[PIPELINE_END] Save failed — pipeline aborted")
         return results
 
     try:
@@ -370,8 +416,8 @@ async def run_intelligence_pipeline() -> dict:
     risk_count = results.get("steps", {}).get("risk_recalc", {}).get("updated", 0)
     heat_count = results.get("steps", {}).get("heatmap", {}).get("points_generated", 0)
     results["summary"] = {
-        "articles_fetched": len(articles),
-        "incidents_extracted": len(all_incidents),
+        "articles_fetched": results.get("steps", {}).get("fetch", {}).get("count", 0),
+        "incidents_extracted": results.get("steps", {}).get("extract", {}).get("count", 0),
         "incidents_saved": saved_count,
         "risk_scores_updated": risk_count,
         "heatmap_points_generated": heat_count,
@@ -379,6 +425,7 @@ async def run_intelligence_pipeline() -> dict:
         "completed_at": datetime.now(timezone.utc).isoformat(),
     }
     results["duration_seconds"] = round(time.time() - start, 2)
+    logger.info(f"[PIPELINE_END] Pipeline complete in {results['duration_seconds']}s")
     logger.info(f"Pipeline complete in {results['duration_seconds']}s")
     logger.info("=" * 60)
     return results

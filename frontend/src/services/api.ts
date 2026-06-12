@@ -111,9 +111,15 @@ api.interceptors.response.use(
 function handleError(error: unknown): never {
   if (error instanceof AxiosError) {
     const body = error.response?.data
-    const detail = body && typeof body === 'object'
-      ? (body as Record<string, unknown>).detail || (body as Record<string, unknown>).message || error.message
-      : error.message
+    let detail: unknown
+    if (body && typeof body === 'object') {
+      detail = (body as Record<string, unknown>).detail || (body as Record<string, unknown>).message || error.message
+    } else {
+      detail = error.message
+    }
+    if (typeof detail === 'object') {
+      throw new Error(JSON.stringify(detail))
+    }
     throw new Error(String(detail))
   }
   throw error
@@ -677,14 +683,16 @@ export const adminApi = {
       const outer = (raw.data || raw) as Record<string, unknown>
       const result = (outer.result || {}) as Record<string, unknown>
       const summary = (result.summary || {}) as Record<string, unknown>
+      const status = String(outer.status || 'completed')
       const runResult: PipelineRunResult = {
         name: pipelineName,
-        status: (String(outer.status || 'completed') as PipelineRunResult['status']),
+        status: (status as PipelineRunResult['status']),
         incidentsSaved: Number(summary.incidents_saved || result.incidents_saved || 0),
         errors: (result.errors || summary.errors || []) as string[],
         durationSeconds: Number(summary.duration_seconds || result.duration_seconds || 0),
         articlesProcessed: Number(summary.articles_fetched || result.articles_fetched || 0),
         ranAt: String(summary.completed_at || new Date().toISOString()),
+        reason: status === 'skipped' ? String(result.reason || 'gemini_unavailable') : undefined,
       }
       // Persist to localStorage so HomeScreen can show last run info
       if (pipelineName === 'intelligence') {

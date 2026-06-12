@@ -180,34 +180,47 @@ async def health_database():
 
 @app.get("/health/gemini")
 async def health_gemini():
-    import asyncio
-    from app.services.gemini import gemini_service
-    if not gemini_service.is_available():
+    from app.services.gemini import gemini_service, GeminiQuotaExceeded
+    status = gemini_service.get_status()
+    if status.get("status") == "QUOTA_EXCEEDED":
         return JSONResponse(
             status_code=503,
-            content={"status": "unhealthy", "error": gemini_service._init_error or "Gemini not available"},
+            content={
+                "status": "QUOTA_EXCEEDED",
+                "error": "Gemini API quota exceeded",
+                "retry_after_seconds": status.get("retry_after_seconds", 900),
+            },
         )
+    if status.get("status") == "OFFLINE":
+        return JSONResponse(
+            status_code=503,
+            content={"status": "OFFLINE", "error": status.get("error", "Gemini not available")},
+        )
+    import asyncio
     try:
-        # Run in executor to avoid blocking the async event loop
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
             lambda: gemini_service.generate("Respond with only the word: OK"),
         )
         if result and "OK" in result:
-            return {"status": "healthy", "model": "gemini-2.0-flash"}
-        if not result and gemini_service._init_error and "quota" in (gemini_service._init_error or "").lower():
-            return JSONResponse(
-                status_code=503,
-                content={"status": "unhealthy", "error": "Gemini daily quota exhausted — try again tomorrow or upgrade to a paid plan"},
-            )
+            return {"status": "ONLINE", "model": "gemini-2.0-flash"}
         return JSONResponse(
             status_code=503,
-            content={"status": "unhealthy", "error": "Gemini test request returned unexpected response"},
+            content={"status": "OFFLINE", "error": "Gemini test request returned unexpected response"},
+        )
+    except GeminiQuotaExceeded:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "QUOTA_EXCEEDED",
+                "error": "Gemini API quota exceeded",
+                "retry_after_seconds": status.get("retry_after_seconds", 900),
+            },
         )
     except Exception as e:
         logger.error(f"Gemini health check failed: {e}")
         return JSONResponse(
             status_code=503,
-            content={"status": "unhealthy", "error": str(e)},
+            content={"status": "OFFLINE", "error": str(e)},
         )

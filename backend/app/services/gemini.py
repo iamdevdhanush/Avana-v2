@@ -2,9 +2,12 @@ import json
 import logging
 import re
 import time
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+QUOTA_COOLDOWN_MINUTES = 15
 
 
 class GeminiQuotaExceeded(Exception):
@@ -28,6 +31,7 @@ class GeminiService:
         self._minute_start = time.time()
         self._available = False
         self._init_error = None
+        self._quota_until = None
         self._init()
 
     def _init(self):
@@ -56,14 +60,36 @@ class GeminiService:
             logger.error(self._init_error)
 
     def is_available(self) -> bool:
+        if self._quota_until and time.time() < self._quota_until:
+            return False
         return self._available
 
+    def get_unavailable_reason(self) -> Optional[str]:
+        if self._quota_until and time.time() < self._quota_until:
+            return "QUOTA_EXCEEDED"
+        if not self._available:
+            return "OFFLINE"
+        return None
+
     def get_status(self) -> dict:
-        return {
-            "available": self._available,
-            "error": self._init_error,
+        status = {
             "model": "gemini-2.0-flash" if self._available else None,
         }
+        if self._quota_until and time.time() < self._quota_until:
+            remaining = int(self._quota_until - time.time())
+            status["available"] = False
+            status["status"] = "QUOTA_EXCEEDED"
+            status["error"] = "Gemini API quota exceeded"
+            status["retry_after_seconds"] = remaining
+        elif not self._available:
+            status["available"] = False
+            status["status"] = "OFFLINE"
+            status["error"] = self._init_error or "Gemini unavailable"
+        else:
+            status["available"] = True
+            status["status"] = "ONLINE"
+            status["error"] = None
+        return status
 
     def _check_rate_limit(self):
         now = time.time()
@@ -80,50 +106,64 @@ class GeminiService:
 
     def _is_transient(self, err: Exception) -> bool:
         err_str = str(err).lower()
-        return any(k in err_str for k in ["429", "503", "timeout", "rate", "quota", "internal", "unavailable", "deadline"])
+        return any(k in err_str for k in ["429", "503", "timeout", "rate", "internal", "unavailable", "deadline"])
 
     def generate(self, prompt: str, system_instruction: Optional[str] = None) -> str:
+        logger.info("[GEMINI_REQUEST] Entering generate()")
+
         if not self._available:
-            logger.warning(f"Gemini unavailable: {self._init_error}")
+            logger.warning(f"[GEMINI_QUOTA_BLOCK] Gemini unavailable: {self._init_error}")
             return ""
-        last_exc = None
+        if self._quota_until and time.time() < self._quota_until:
+            remaining = int(self._quota_until - time.time())
+            logger.warning(f"[GEMINI_QUOTA_BLOCK] Gemini quota cooldown active — {remaining}s remaining")
+            raise GeminiQuotaExceeded(
+                f"Gemini quota cooldown active — retry in {remaining}s"
+            )
+
+        import google.generativeai as genai
+
         for attempt in range(1, 4):
             try:
                 self._check_rate_limit()
-                import google.generativeai as genai
                 if system_instruction:
                     model = genai.GenerativeModel("gemini-2.0-flash", system_instruction=system_instruction)
                 else:
                     model = self.model
-                response = model.generate_content(prompt)
+                response = model.generate_content(prompt, request_options={"retry": None})
                 if not response or not response.text:
                     logger.warning("Gemini returned empty response")
                     return ""
                 logger.info(f"Gemini response received ({len(response.text)} chars)")
                 return response.text
-            except GeminiQuotaExceeded as e:
-                logger.warning(str(e))
-                return ""
+            except GeminiQuotaExceeded:
+                raise
             except Exception as e:
-                last_exc = e
                 err_str = str(e)
+
                 if "API_KEY_INVALID" in err_str or "API key" in err_str:
                     self._available = False
                     self._init_error = "Gemini API key invalid or rejected"
                     logger.error(self._init_error)
-                    return ""
+                    raise GeminiAuthError(self._init_error) from e
+
                 if "quota" in err_str.lower() or "resource_exhausted" in err_str.lower():
                     logger.error(f"Gemini quota exhausted: {e}")
-                    return ""
+                    self._quota_until = time.time() + QUOTA_COOLDOWN_MINUTES * 60
+                    raise GeminiQuotaExceeded(
+                        f"Gemini quota exhausted — retry in {QUOTA_COOLDOWN_MINUTES} minutes"
+                    ) from e
+
                 if self._is_transient(e) and attempt < 3:
                     delay = 1.0 * (2 ** (attempt - 1))
                     logger.warning(f"Gemini transient error (attempt {attempt}/3): {e}. Retrying in {delay}s...")
                     time.sleep(delay)
                 else:
                     logger.error(f"Gemini generation error: {e}")
-                    return ""
-        logger.error(f"Gemini failed after 3 attempts: {last_exc}")
-        return ""
+                    raise RuntimeError(f"Gemini generation failed: {e}") from e
+
+        logger.error(f"Gemini failed after 3 attempts")
+        raise RuntimeError(f"Gemini failed after 3 retries")
 
     def generate_structured(self, prompt: str, system_instruction: str) -> dict:
         text = self.generate(prompt, system_instruction)
