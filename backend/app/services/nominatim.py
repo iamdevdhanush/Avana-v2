@@ -15,7 +15,8 @@ class NominatimService:
             timeout=10.0,
             follow_redirects=True,
             headers={
-                "User-Agent": "AvanaSafetyApp/2.0 (karnataka-safety-app@example.com)",
+                "User-Agent": "Avana/2.0 (Safety Intelligence Platform; +https://avana.app; contact@avana.app)",
+                "Referer": "https://avana.app/",
                 "Accept": "application/json",
             },
         )
@@ -64,7 +65,7 @@ class NominatimService:
                 else:
                     logger.warning(f"Nominatim timeout after 3 attempts: {query}")
             except httpx.HTTPStatusError as e:
-                if e.response.status_code in (429, 503, 502) and attempt < 3:
+                if e.response.status_code in (429, 403, 503, 502) and attempt < 3:
                     delay = 1.0 * (2 ** (attempt - 1))
                     logger.warning(f"Nominatim HTTP {e.response.status_code} (attempt {attempt}/3): {query}. Retrying in {delay}s...")
                     await asyncio.sleep(delay)
@@ -83,34 +84,61 @@ class NominatimService:
         return None
 
     async def reverse_geocode(self, lat: float, lng: float) -> Optional[dict]:
-        await self._rate_limit()
-        try:
-            response = await self.client.get(
-                f"{self.BASE_URL}/reverse",
-                params={"lat": lat, "lon": lng, "format": "json", "addressdetails": 1},
-            )
-            response.raise_for_status()
-            data = response.json()
-            if data:
-                return {
-                    "lat": float(data.get("lat", 0)),
-                    "lng": float(data.get("lon", 0)),
-                    "display_name": data.get("display_name", ""),
-                    "place_id": data.get("place_id", ""),
-                    "osm_type": data.get("osm_type", ""),
-                    "osm_id": data.get("osm_id", ""),
-                    "address": data.get("address", {}),
-                }
-            return None
-        except httpx.TimeoutException:
-            logger.warning(f"Reverse geocoding timeout for ({lat}, {lng})")
-            return None
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Reverse geocoding HTTP error ({lat}, {lng}): {e.response.status_code}")
-            return None
-        except Exception as e:
-            logger.error(f"Reverse geocoding error for ({lat}, {lng}): {e}")
-            return None
+        last_exc = None
+        for attempt in range(1, 4):
+            try:
+                await self._rate_limit()
+                response = await self.client.get(
+                    f"{self.BASE_URL}/reverse",
+                    params={"lat": lat, "lon": lng, "format": "json", "addressdetails": 1},
+                )
+                response.raise_for_status()
+                data = response.json()
+                if data:
+                    address = data.get("address", {})
+                    return {
+                        "lat": float(data.get("lat", 0)),
+                        "lng": float(data.get("lon", 0)),
+                        "display_name": data.get("display_name", ""),
+                        "place_id": data.get("place_id", ""),
+                        "osm_type": data.get("osm_type", ""),
+                        "osm_id": data.get("osm_id", ""),
+                        "address": address,
+                        "locality": address.get("suburb", "") or address.get("quarter", "") or address.get("neighbourhood", "") or "",
+                        "suburb": address.get("suburb", "") or "",
+                        "district": address.get("state_district", "") or address.get("county", "") or address.get("district", "") or "",
+                        "city": address.get("city", "") or address.get("town", "") or address.get("village", "") or address.get("municipality", "") or "",
+                        "state": address.get("state", "") or "",
+                        "country": address.get("country", "") or "",
+                    }
+                logger.info(f"No reverse geocoding result for ({lat}, {lng})")
+                return None
+            except httpx.TimeoutException as e:
+                last_exc = e
+                if attempt < 3:
+                    delay = 1.0 * (2 ** (attempt - 1))
+                    logger.warning(f"Reverse geocode timeout (attempt {attempt}/3): ({lat}, {lng}). Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                else:
+                    logger.warning(f"Reverse geocode timeout after 3 attempts: ({lat}, {lng})")
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in (429, 403, 503, 502) and attempt < 3:
+                    delay = 1.0 * (2 ** (attempt - 1))
+                    logger.warning(f"Reverse geocode HTTP {e.response.status_code} (attempt {attempt}/3): ({lat}, {lng}). Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                    continue
+                logger.error(f"Reverse geocode HTTP error for ({lat}, {lng}): {e.response.status_code}")
+                return None
+            except Exception as e:
+                last_exc = e
+                if attempt < 3:
+                    delay = 1.0 * (2 ** (attempt - 1))
+                    logger.warning(f"Reverse geocode error (attempt {attempt}/3): {e}. Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"Reverse geocode error for ({lat}, {lng}): {e}")
+                    return None
+        return None
 
     async def search_structured(
         self,
@@ -148,6 +176,18 @@ class NominatimService:
             logger.warning(f"Structured search timeout: {street}, {city}, {district}")
             return None
         except httpx.HTTPStatusError as e:
+            if e.response.status_code in (429, 403, 503, 502):
+                logger.warning(f"Structured search HTTP {e.response.status_code}, retrying once...")
+                await self._rate_limit()
+                try:
+                    response2 = await self.client.get(f"{self.BASE_URL}/search", params=params)
+                    response2.raise_for_status()
+                    data2 = response2.json()
+                    if data2 and len(data2) > 0:
+                        r2 = data2[0]
+                        return {"lat": float(r2.get("lat", 0)), "lng": float(r2.get("lon", 0)), "display_name": r2.get("display_name", ""), "place_id": r2.get("place_id", ""), "osm_type": r2.get("osm_type", ""), "osm_id": r2.get("osm_id", "")}
+                except Exception:
+                    pass
             logger.error(f"Structured search HTTP error: {e.response.status_code}")
             return None
         except Exception as e:

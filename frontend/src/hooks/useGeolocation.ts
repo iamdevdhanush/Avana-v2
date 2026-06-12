@@ -47,6 +47,7 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
 
   const handleSuccess = useCallback((pos: GeolocationPosition) => {
     if (!mountedRef.current) return
+    console.log(`[GEOLOCATION] Position: ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)} | accuracy: ±${pos.coords.accuracy}m`)
     setPosition({
       latitude: pos.coords.latitude,
       longitude: pos.coords.longitude,
@@ -66,15 +67,19 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
     switch (err.code) {
       case err.PERMISSION_DENIED:
         message = 'Location permission denied. Please enable location access.'
+        console.error(`[GEOLOCATION] Error: ${message}`)
         break
       case err.POSITION_UNAVAILABLE:
         message = 'Location information is unavailable.'
+        console.error(`[GEOLOCATION] Error: ${message}`)
         break
       case err.TIMEOUT:
         message = 'Location request timed out.'
+        console.error(`[GEOLOCATION] Error: ${message}`)
         break
       default:
         message = 'An unknown error occurred while fetching location.'
+        console.error(`[GEOLOCATION] Error (code ${err.code}): ${message}`)
     }
     setError(message)
     setIsLoading(false)

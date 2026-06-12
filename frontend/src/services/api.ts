@@ -13,6 +13,7 @@ import type {
   DistrictAnalytics,
   HeatmapPoint,
   HeatmapResponse,
+  ReverseGeocodeResult,
   MapBounds,
   ApiResponse,
   EmergencyContact,
@@ -461,6 +462,30 @@ export const riskApi = {
   getHeatmapPoints: async (bounds: MapBounds, zoom: number): Promise<HeatmapPoint[]> => {
     const resp = await riskApi.getHeatmapBounds(bounds, zoom)
     return resp.points
+  },
+}
+
+// ── Location API ──────────────────────────────────────────────────────────────
+
+export const locationApi = {
+  reverseGeocode: async (lat: number, lng: number): Promise<ReverseGeocodeResult> => {
+    try {
+      const { data: raw } = await api.post('/location/reverse-geocode', { latitude: lat, longitude: lng })
+      const inner = (raw.data || raw) as Record<string, unknown>
+      return {
+        displayName: String(inner.display_name || ''),
+        locality: String(inner.locality || ''),
+        suburb: String(inner.suburb || ''),
+        district: String(inner.district || ''),
+        city: String(inner.city || ''),
+        state: String(inner.state || ''),
+        country: String(inner.country || ''),
+        latitude: Number(inner.latitude || lat),
+        longitude: Number(inner.longitude || lng),
+        cached: Boolean(inner.cached),
+        responseTimeMs: Number(inner.response_time_ms || 0),
+      }
+    } catch (error) { handleError(error) }
   },
 }
 

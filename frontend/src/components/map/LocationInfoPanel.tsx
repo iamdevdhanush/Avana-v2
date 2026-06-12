@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { X, Shield, Hospital, AlertTriangle, Navigation, Flag, Lightbulb } from 'lucide-react'
+import { X, Shield, Hospital, AlertTriangle, Navigation, Flag, Lightbulb, Loader2 } from 'lucide-react'
 import { useMapStore } from '@/store/mapStore'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { getRiskColor, formatDistance, formatRelativeTime } from '@/lib/utils'
 import type { RiskScore, Incident, PoliceStation, Hospital as HospitalType } from '@/types'
 import { riskApi } from '@/services/api'
+import { useLocationName } from '@/hooks/useLocationName'
 
 interface LocationInfoPanelProps {
   onReportArea?: () => void
@@ -25,6 +26,8 @@ export function LocationInfoPanel({ onReportArea, onGetSafeRoute, onClose }: Loc
   const [recentIncidents] = React.useState<Incident[]>([])
   const [nearbyPolice] = React.useState<PoliceStation[]>([])
   const [nearbyHospitals] = React.useState<HospitalType[]>([])
+
+  const locationName = useLocationName(selectedLocation?.lat, selectedLocation?.lng)
 
   React.useEffect(() => {
     if (!selectedLocation) return
@@ -90,8 +93,15 @@ export function LocationInfoPanel({ onReportArea, onGetSafeRoute, onClose }: Loc
                   </Badge>
                 ) : null}
                 <p className="text-xs text-muted-foreground">
-                  {selectedLocation.lat.toFixed(4)}, {selectedLocation.lng.toFixed(4)}
+                  {locationName.isLoading ? (
+                    <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />Detecting...</span>
+                  ) : (
+                    locationName.displayName
+                  )}
                 </p>
+                {locationName.city && locationName.state && (
+                  <p className="text-[10px] text-muted-foreground/60">{locationName.city}, {locationName.state}</p>
+                )}
               </div>
             </div>
 

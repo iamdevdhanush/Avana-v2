@@ -4,6 +4,7 @@ import {
   Flag, MapPin, ChevronDown, CheckCircle, AlertCircle, Loader2, ArrowLeft,
 } from 'lucide-react'
 import { useGeolocation } from '@/hooks/useGeolocation'
+import { useLocationName } from '@/hooks/useLocationName'
 import { incidentApi } from '@/services/api'
 import { useUIStore } from '@/store/uiStore'
 
@@ -30,6 +31,7 @@ type Status = 'idle' | 'submitting' | 'success' | 'error'
 export function ReportIncidentScreen() {
   const navigate = useNavigate()
   const { position } = useGeolocation()
+  const locationName = useLocationName(position.latitude, position.longitude)
   const { addToast } = useUIStore()
 
   const [incidentType, setIncidentType] = React.useState('')
@@ -43,9 +45,11 @@ export function ReportIncidentScreen() {
   // Auto-fill location from GPS
   React.useEffect(() => {
     if (position.latitude && position.longitude) {
-      setLocationText(`${position.latitude.toFixed(5)}, ${position.longitude.toFixed(5)}`)
+      const name = locationName.displayName
+      const coordFallback = `${position.latitude.toFixed(5)}, ${position.longitude.toFixed(5)}`
+      setLocationText(name && name !== coordFallback ? name : coordFallback)
     }
-  }, [position.latitude, position.longitude])
+  }, [position.latitude, position.longitude, locationName.displayName])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
