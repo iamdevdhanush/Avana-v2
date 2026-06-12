@@ -21,6 +21,31 @@ HISTORICAL_RISK_WEIGHT = 0.4
 NIGHT_START_HOUR = 21
 NIGHT_END_HOUR = 6
 
+DEFAULT_LOCATION_NAME = "Unknown (Pipeline Generated)"
+
+
+async def ensure_default_location() -> str:
+    async with get_session_factory()() as session:
+        result = await session.execute(
+            text("SELECT id FROM locations LIMIT 1")
+        )
+        row = result.fetchone()
+        if row:
+            return str(row[0])
+        result = await session.execute(
+            text("""
+                INSERT INTO locations
+                    (id, name, latitude, longitude, metadata, created_at)
+                VALUES (gen_random_uuid(), :name, 0.0, 0.0, '{}'::jsonb, NOW())
+                RETURNING id
+            """),
+            {"name": DEFAULT_LOCATION_NAME},
+        )
+        await session.commit()
+        location_id = result.scalar_one()
+        logger.info(f"Created default location: {location_id}")
+        return str(location_id)
+
 
 async def score_location(lat: float, lng: float, district: Optional[str] = None) -> dict:
     async with get_session_factory()() as session:
@@ -121,13 +146,13 @@ async def score_location(lat: float, lng: float, district: Optional[str] = None)
     score = max(0.0, min(100.0, raw_score))
 
     if score <= 25:
-        category = "safe"
+        category = "SAFE"
     elif score <= 50:
-        category = "moderate"
+        category = "MODERATE"
     elif score <= 75:
-        category = "high_risk"
+        category = "HIGH_RISK"
     else:
-        category = "critical"
+        category = "CRITICAL"
 
     factors = {
         "historical_risk": round(historical_risk, 2),
@@ -145,6 +170,7 @@ async def score_location(lat: float, lng: float, district: Optional[str] = None)
 
 
 async def recalculate_all_risk_scores() -> dict:
+    location_id = await ensure_default_location()
     async with get_session_factory()() as session:
         result = await session.execute(
             text("SELECT DISTINCT latitude, longitude FROM incidents WHERE latitude IS NOT NULL")
@@ -159,19 +185,30 @@ async def recalculate_all_risk_scores() -> dict:
         try:
             result = await score_location(lat, lng)
             async with get_session_factory()() as session:
-                await session.execute(
-                    text("""
-                        INSERT INTO risk_scores
-                            (latitude, longitude, score, category, calculated_at, created_at)
-                        VALUES (:lat, :lng, :score, :cat, NOW(), NOW())
-                        ON CONFLICT (latitude, longitude) DO UPDATE
-                        SET score = EXCLUDED.score, category = EXCLUDED.category,
-                            calculated_at = NOW()
-                    """),
-                    {"lat": lat, "lng": lng, "score": result["score"], "cat": result["category"]},
-                )
-                await session.commit()
-            updated += 1
+                try:
+                    await session.execute(
+                        text("""
+                            INSERT INTO risk_scores
+                                (id, location_id, latitude, longitude, score, category,
+                                 metadata, calculated_at, created_at)
+                            VALUES (
+                                gen_random_uuid(),
+                                COALESCE(
+                                    (SELECT id FROM locations ORDER BY created_at LIMIT 1),
+                                    gen_random_uuid()
+                                ),
+                                :lat, :lng, :score, :cat,
+                                '{}'::jsonb, NOW(), NOW()
+                            )
+                        """),
+                        {"lat": lat, "lng": lng, "score": result["score"], "cat": result["category"]},
+                    )
+                    await session.commit()
+                    updated += 1
+                except Exception as e:
+                    await session.rollback()
+                    logger.error(f"Risk score failed for ({lat}, {lng}): {e}")
+                    errors += 1
         except Exception as e:
             logger.error(f"Risk score failed for ({lat}, {lng}): {e}")
             errors += 1

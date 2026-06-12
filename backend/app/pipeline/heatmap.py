@@ -5,7 +5,7 @@ from typing import List, Tuple
 from sqlalchemy import text
 
 from app.database import get_session_factory
-from app.pipeline.risk import score_location
+from app.pipeline.risk import score_location, ensure_default_location
 
 logger = logging.getLogger(__name__)
 
@@ -133,13 +133,13 @@ async def _score_points_batch(points: List[Tuple[float, float]]) -> List[dict]:
         score = max(0.0, min(100.0, raw_score))
 
         if score <= 25:
-            category = "safe"
+            category = "SAFE"
         elif score <= 50:
-            category = "moderate"
+            category = "MODERATE"
         elif score <= 75:
-            category = "high_risk"
+            category = "HIGH_RISK"
         else:
-            category = "critical"
+            category = "CRITICAL"
 
         results.append({
             "latitude": lat,
@@ -169,32 +169,57 @@ async def generate_heatmap_for_bounds(
             for lat, lng in batch:
                 all_results.append({
                     "latitude": lat, "longitude": lng,
-                    "score": 50.0, "category": "moderate",
+                    "score": 50.0, "category": "MODERATE",
                 })
 
+    logger.info(f"[HEATMAP_START] Inserting {len(all_results)} heatmap points into risk_scores")
+    await ensure_default_location()
     factory = get_session_factory()
     async with factory() as session:
-        for r in all_results:
+        failures = 0
+        MAX_HEATMAP_FAILURES = 10
+        for idx, r in enumerate(all_results):
             try:
                 await session.execute(
                     text("""
                         INSERT INTO risk_scores
-                            (latitude, longitude, score, category,
-                             calculated_at, created_at)
-                        VALUES (:lat, :lng, :score, :cat, NOW(), NOW())
-                        ON CONFLICT (latitude, longitude) DO UPDATE
-                        SET score = EXCLUDED.score,
-                            category = EXCLUDED.category,
-                            calculated_at = NOW()
+                            (id, location_id, latitude, longitude, score, category,
+                             metadata, calculated_at, created_at)
+                        VALUES (
+                            gen_random_uuid(),
+                            COALESCE(
+                                (SELECT id FROM locations ORDER BY created_at LIMIT 1),
+                                gen_random_uuid()
+                            ),
+                            :lat, :lng, :score, :cat,
+                            '{}'::jsonb, NOW(), NOW()
+                        )
                     """),
                     {"lat": r["latitude"], "lng": r["longitude"],
                      "score": r["score"], "cat": r["category"]},
                 )
             except Exception as e:
-                logger.error(f"Failed to save heatmap point ({r['latitude']}, {r['longitude']}): {e}")
+                failures += 1
+                logger.error(f"[HEATMAP_POINT_FAILED] ({r['latitude']}, {r['longitude']}): {e}")
+                try:
+                    await session.rollback()
+                    logger.info(f"[HEATMAP_ROLLBACK] Transaction rolled back after failure #{failures}")
+                except Exception as rb_e:
+                    logger.error(f"[HEATMAP_ROLLBACK] Rollback itself failed: {rb_e}")
+                if failures >= MAX_HEATMAP_FAILURES:
+                    logger.error(f"[HEATMAP_ABORTED] {failures} consecutive insert failures — aborting")
+                    return {
+                        "points_generated": idx,
+                        "points_failed": len(all_results) - idx,
+                        "error": f"HEATMAP_GENERATION_FAILED after {failures} consecutive errors",
+                        "bounds": {"sw_lat": sw_lat, "sw_lng": sw_lng, "ne_lat": ne_lat, "ne_lng": ne_lng},
+                        "generated_at": datetime.now(timezone.utc).isoformat(),
+                    }
         await session.commit()
+    logger.info(f"[HEATMAP_COMPLETED] {len(all_results)} heatmap points saved")
     return {
         "points_generated": len(all_results),
+        "points_failed": 0,
         "bounds": {"sw_lat": sw_lat, "sw_lng": sw_lng, "ne_lat": ne_lat, "ne_lng": ne_lng},
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
