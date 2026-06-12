@@ -1,4 +1,4 @@
- """
+"""
 Community Report Pipeline — Simplified.
 Processes pending safety_reports: validate, deduplicate, detect spam, save.
 """
