@@ -10,6 +10,41 @@ from app.pipeline.risk import score_location, ensure_default_location
 logger = logging.getLogger(__name__)
 
 GRID_SIZE_DEGREES = 0.009
+MAX_GRID_CELLS = 50_000
+
+
+def _estimate_grid_cells(sw_lat: float, sw_lng: float, ne_lat: float, ne_lng: float) -> int:
+    lat_cells = max(1, math.ceil((ne_lat - sw_lat) / GRID_SIZE_DEGREES))
+    lng_cells = max(1, math.ceil((ne_lng - sw_lng) / GRID_SIZE_DEGREES))
+    return lat_cells * lng_cells
+
+
+async def compute_localized_bounds(buffer_degrees: float = 0.05, max_cells_per: int = 1000) -> List[Tuple[float, float, float, float]]:
+    bounds_list: List[Tuple[float, float, float, float]] = []
+    async with get_session_factory()() as session:
+        result = await session.execute(
+            text("""
+                SELECT district,
+                       MIN(latitude) as min_lat, MAX(latitude) as max_lat,
+                       MIN(longitude) as min_lng, MAX(longitude) as max_lng
+                FROM incidents
+                WHERE latitude IS NOT NULL
+                  AND created_at >= NOW() - INTERVAL '1 hour'
+                GROUP BY district
+            """)
+        )
+        rows = result.fetchall()
+        for row in rows:
+            sw_lat = row[1] - buffer_degrees
+            ne_lat = row[2] + buffer_degrees
+            sw_lng = row[3] - buffer_degrees
+            ne_lng = row[4] + buffer_degrees
+            cells = _estimate_grid_cells(sw_lat, sw_lng, ne_lat, ne_lng)
+            if cells <= max_cells_per:
+                bounds_list.append((sw_lat, sw_lng, ne_lat, ne_lng))
+            else:
+                logger.warning(f"[HEATMAP] District '{row[0]}' exceeds {max_cells_per} cells ({cells}) — skipping")
+    return bounds_list
 
 
 def _generate_grid(sw_lat: float, sw_lng: float, ne_lat: float, ne_lng: float) -> List[Tuple[float, float]]:
@@ -155,6 +190,21 @@ async def generate_heatmap_for_bounds(
     ne_lat: float, ne_lng: float,
     zoom: str = "city",
 ) -> dict:
+    estimated = _estimate_grid_cells(sw_lat, sw_lng, ne_lat, ne_lng)
+    lat_cells = max(1, math.ceil((ne_lat - sw_lat) / GRID_SIZE_DEGREES))
+    lng_cells = max(1, math.ceil((ne_lng - sw_lng) / GRID_SIZE_DEGREES))
+    logger.info(f"[HEATMAP] Estimated grid cells: {estimated} ({lat_cells}×{lng_cells})")
+    logger.info(f"[HEATMAP] Bounds: sw=({sw_lat:.4f},{sw_lng:.4f}) ne=({ne_lat:.4f},{ne_lng:.4f})")
+
+    if estimated > MAX_GRID_CELLS:
+        logger.error(f"[HEATMAP] ABORT: {estimated} cells exceeds max {MAX_GRID_CELLS}")
+        return {
+            "error": f"Grid too large: {estimated} cells exceeds {MAX_GRID_CELLS} max",
+            "estimated_cells": estimated,
+            "max_cells": MAX_GRID_CELLS,
+            "bounds": {"sw_lat": sw_lat, "sw_lng": sw_lng, "ne_lat": ne_lat, "ne_lng": ne_lng},
+        }
+
     grid = _generate_grid(sw_lat, sw_lng, ne_lat, ne_lng)
     logger.info(f"Generating heatmap for {len(grid)} grid points")
     all_results = []

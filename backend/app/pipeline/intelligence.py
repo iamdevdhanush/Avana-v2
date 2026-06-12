@@ -402,12 +402,24 @@ async def run_intelligence_pipeline() -> dict:
         logger.error(f"Step 5 failed: {e}")
 
     try:
-        from app.config import settings
-        bounds = [float(x) for x in settings.KARNATAKA_BOUNDS.split(",")]
-        if len(bounds) == 4:
-            heat_result = await update_heatmap_for_bounds(bounds[0], bounds[2], bounds[1], bounds[3])
+        from app.pipeline.heatmap import compute_localized_bounds
+        bounds_list = await compute_localized_bounds(buffer_degrees=0.05, max_cells_per=1000)
+        if bounds_list:
+            total_points = 0
+            for i, (sw_lat, sw_lng, ne_lat, ne_lng) in enumerate(bounds_list):
+                logger.info(f"[PIPELINE] Heatmap zone {i+1}/{len(bounds_list)}: ({sw_lat:.4f},{sw_lng:.4f}) to ({ne_lat:.4f},{ne_lng:.4f})")
+                heat_result = await update_heatmap_for_bounds(sw_lat, sw_lng, ne_lat, ne_lng)
+                total_points += heat_result.get("points_generated", 0)
+            heat_result = {"points_generated": total_points}
             results["steps"]["heatmap"] = {"status": "ok", **heat_result}
-            logger.info(f"Step 6 complete: {heat_result.get('points_generated', 0)} heatmap points")
+            logger.info(f"Step 6 complete: {total_points} heatmap points across {len(bounds_list)} zone(s)")
+        else:
+            from app.config import settings
+            bounds = [float(x) for x in settings.KARNATAKA_BOUNDS.split(",")]
+            sw_lat, sw_lng, ne_lat, ne_lng = bounds[0], bounds[2], bounds[1], bounds[3]
+            logger.info(f"[PIPELINE] No recent incident clusters — fallback to state bounds")
+            heat_result = await update_heatmap_for_bounds(sw_lat, sw_lng, ne_lat, ne_lng)
+            results["steps"]["heatmap"] = {"status": "ok", **heat_result}
     except Exception as e:
         results["steps"]["heatmap"] = {"status": "failed", "error": str(e)}
         logger.error(f"Step 6 failed: {e}")
