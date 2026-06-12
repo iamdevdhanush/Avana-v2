@@ -33,22 +33,22 @@ async def get_dashboard(
     sos = await db.execute(text("SELECT COUNT(*) FROM sos_events"))
     sos_events = sos.scalar() or 0
 
-    verified = await db.execute(text("SELECT COUNT(*) FROM incidents WHERE status::text = 'verified'"))
+    verified = await db.execute(text("SELECT COUNT(*) FROM incidents WHERE UPPER(status::text) = 'VERIFIED'"))
     verified_reports = verified.scalar() or 0
 
     by_district = await db.execute(
         text("""
             SELECT district, COUNT(*) as total,
-                   COUNT(*) FILTER (WHERE severity::text IN ('high','critical')) as high_risk,
-                   COUNT(*) FILTER (WHERE severity::text = 'medium') as medium_risk,
-                   COUNT(*) FILTER (WHERE severity::text = 'low') as low_risk,
-                   AVG(CASE
-                       WHEN severity::text = 'critical' THEN 4
-                       WHEN severity::text = 'high' THEN 3
-                       WHEN severity::text = 'medium' THEN 2
-                       WHEN severity::text = 'low' THEN 1
-                       ELSE 0
-                   END) as avg_score
+                    COUNT(*) FILTER (WHERE UPPER(severity::text) IN ('HIGH','CRITICAL')) as high_risk,
+                    COUNT(*) FILTER (WHERE UPPER(severity::text) = 'MEDIUM') as medium_risk,
+                    COUNT(*) FILTER (WHERE UPPER(severity::text) = 'LOW') as low_risk,
+                    AVG(CASE
+                        WHEN UPPER(severity::text) = 'CRITICAL' THEN 4
+                        WHEN UPPER(severity::text) = 'HIGH' THEN 3
+                        WHEN UPPER(severity::text) = 'MEDIUM' THEN 2
+                        WHEN UPPER(severity::text) = 'LOW' THEN 1
+                        ELSE 0
+                    END) as avg_score
             FROM incidents WHERE district IS NOT NULL
             GROUP BY district ORDER BY total DESC LIMIT 20
         """)
@@ -108,7 +108,7 @@ async def get_dashboard(
         text("""
             SELECT id, incident_type, severity, district, created_at, status
             FROM incidents
-            WHERE severity::text IN ('high', 'critical') AND created_at >= :start
+            WHERE UPPER(severity::text) IN ('HIGH', 'CRITICAL') AND created_at >= :start
             ORDER BY created_at DESC LIMIT 20
         """),
         {"start": thirty_days_ago},
@@ -140,9 +140,9 @@ async def get_district_analytics(
         text("""
             SELECT district,
                    COUNT(*) as total,
-                   COUNT(*) FILTER (WHERE severity::text IN ('high','critical')) as high_risk,
-                   COUNT(*) FILTER (WHERE severity::text = 'medium') as medium_risk,
-                   COUNT(*) FILTER (WHERE severity::text = 'low') as low_risk,
+                   COUNT(*) FILTER (WHERE UPPER(severity::text) IN ('HIGH','CRITICAL')) as high_risk,
+                   COUNT(*) FILTER (WHERE UPPER(severity::text) = 'MEDIUM') as medium_risk,
+                   COUNT(*) FILTER (WHERE UPPER(severity::text) = 'LOW') as low_risk,
                    MIN(created_at) as first_incident,
                    MAX(created_at) as last_incident
             FROM incidents
@@ -177,9 +177,9 @@ async def get_trends(
         text("""
             SELECT DATE(created_at) as dt,
                    COUNT(*) as total,
-                   COUNT(*) FILTER (WHERE severity::text IN ('high','critical')) as high_risk_count,
-                   COUNT(*) FILTER (WHERE source::text = 'news') as news_count,
-                   COUNT(*) FILTER (WHERE source::text = 'user_report') as user_report_count
+                    COUNT(*) FILTER (WHERE UPPER(severity::text) IN ('HIGH','CRITICAL')) as high_risk_count,
+                    COUNT(*) FILTER (WHERE UPPER(source::text) = 'NEWS') as news_count,
+                    COUNT(*) FILTER (WHERE UPPER(source::text) = 'USER_REPORT') as user_report_count
             FROM incidents
             WHERE created_at >= :start
             GROUP BY dt
@@ -214,9 +214,9 @@ async def get_report_analytics(
         text("""
             SELECT DATE(created_at) as dt,
                    COUNT(*) as total,
-                   COUNT(*) FILTER (WHERE status::text = 'approved') as approved,
-                   COUNT(*) FILTER (WHERE status::text = 'rejected') as rejected,
-                   COUNT(*) FILTER (WHERE status::text = 'pending') as pending
+                    COUNT(*) FILTER (WHERE UPPER(status::text) = 'APPROVED') as approved,
+                    COUNT(*) FILTER (WHERE UPPER(status::text) = 'REJECTED') as rejected,
+                    COUNT(*) FILTER (WHERE UPPER(status::text) = 'PENDING') as pending
             FROM safety_reports
             WHERE created_at >= :start
             GROUP BY dt
