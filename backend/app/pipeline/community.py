@@ -85,7 +85,8 @@ async def process_pending_reports() -> dict:
             report["description_valid"] = parsed.get("description_valid", True)
             report["confidence_adjustment"] = float(parsed.get("confidence_adjustment", 0.0))
             report["classification_notes"] = parsed.get("notes", "")
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Gemini classification failed for report {report.get('id', '?')}: {e}")
             report["validated_type"] = report.get("incident_type", "other")
             report["validated_severity"] = report.get("severity", "medium")
             report["confidence_adjustment"] = 0.0

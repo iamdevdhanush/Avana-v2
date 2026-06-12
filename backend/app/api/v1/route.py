@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 
 from app.dependencies import get_current_user
 from app.models.user import User
@@ -224,8 +225,44 @@ async def get_safe_route(
 
 @router.get("/health")
 async def route_health():
-    return {
-        "status": "healthy",
-        "service": "Route Intelligence",
-        "provider": "OSRM",
-    }
+    """Probe OSRM to verify route engine connectivity rather than returning hardcoded healthy."""
+    import httpx
+    import time
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            # Lightweight OSRM nearest-node probe — cheap, doesn't compute a route
+            resp = await client.get(
+                f"{OSRM_BASE_URL}/nearest/v1/driving/77.5946,12.9716",
+                timeout=5.0,
+            )
+        elapsed_ms = round((time.monotonic() - t0) * 1000)
+        if resp.status_code == 200:
+            status = "degraded" if elapsed_ms > 2000 else "healthy"
+            return {
+                "status": status,
+                "service": "Route Intelligence",
+                "provider": "OSRM",
+                "response_ms": elapsed_ms,
+            }
+        logger.warning(f"OSRM probe returned HTTP {resp.status_code}")
+        return {
+            "status": "degraded",
+            "service": "Route Intelligence",
+            "provider": "OSRM",
+            "detail": f"OSRM returned HTTP {resp.status_code}",
+            "response_ms": elapsed_ms,
+        }
+    except Exception as e:
+        elapsed_ms = round((time.monotonic() - t0) * 1000)
+        logger.warning(f"OSRM health probe failed: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "offline",
+                "service": "Route Intelligence",
+                "provider": "OSRM",
+                "detail": str(e),
+                "response_ms": elapsed_ms,
+            },
+        )
