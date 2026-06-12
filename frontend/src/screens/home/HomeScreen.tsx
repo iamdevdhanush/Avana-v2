@@ -38,7 +38,7 @@ const TYPE_LABELS: Record<string, string> = {
 export function HomeScreen() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { position, isLoading: geoLoading } = useGeolocation()
+  const { position, isLoading: geoLoading, isFallback } = useGeolocation()
 
   const firstName = user?.name?.split(' ')[0] || 'there'
   const hour = new Date().getHours()
@@ -111,9 +111,11 @@ export function HomeScreen() {
             <p className="text-xs text-[#6B7280] mt-0.5">
               {geoLoading
                 ? 'Detecting your location...'
-                : position.latitude
-                  ? 'Location detected'
-                  : 'Enable location for safety data'}
+                : isFallback
+                  ? 'Using Shivamogga default location'
+                  : position.latitude
+                    ? 'Location detected'
+                    : 'Enable location for safety data'}
             </p>
           </div>
           {/* System health compact chip */}

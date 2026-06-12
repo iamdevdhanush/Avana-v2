@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -18,6 +19,7 @@ from app.schemas.risk import (
     DistrictSummary,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/risk", tags=["Risk Assessment"])
 
 
@@ -52,6 +54,8 @@ async def get_heatmap(
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Heatmap query failed: {str(e)}")
 
+    logger.info(f"[HEATMAP] API endpoint: {len(points_data)} points returned from get_heatmap_data")
+
     points = [
         HeatmapPoint(
             latitude=p.get("latitude", 0),
@@ -81,6 +85,7 @@ async def get_heatmap(
         {"sw_lat": body.sw_lat, "ne_lat": body.ne_lat, "sw_lng": body.sw_lng, "ne_lng": body.ne_lng},
     )
     district_rows = district_result.fetchall()
+    logger.info(f"[HEATMAP] district summaries: {len(district_rows)} rows")
 
     summaries = [
         DistrictSummary(
