@@ -743,17 +743,6 @@ export const chatApi = {
     } catch (error) { handleError(error) }
   },
 
-  getTestResponse: async (): Promise<{ status: string; response?: string; detail?: string }> => {
-    try {
-      const { data } = await api.get('/chat/test')
-      const inner = (data.data || data) as Record<string, unknown>
-      return {
-        status: String(inner.status || 'unavailable'),
-        response: inner.response ? String(inner.response) : undefined,
-        detail: inner.detail ? String(inner.detail) : undefined,
-      }
-    } catch (error) { handleError(error) }
-  },
 }
 
 // ── Analytics API ─────────────────────────────────────────────────────────────
@@ -854,21 +843,21 @@ export const healthApi = {
     }
   },
 
-  // GET /api/v1/chat/test — Gemini AI availability
+  // GET /health/gemini — Gemini AI availability
   getAIHealth: async (): Promise<ServiceHealth> => {
     const checkedAt = new Date().toISOString()
     const t0 = Date.now()
     try {
-      const { data: raw } = await api.get('/chat/test', { timeout: 8000 })
+      const { data: raw } = await axios.get(`${BASE_URL}/health/gemini`, { timeout: 8000 })
       const responseMs = Date.now() - t0
       const inner = (raw.data || raw) as Record<string, unknown>
-      const status = String(inner.status || 'unavailable')
+      const status = String(inner.status || 'OFFLINE')
       return {
         name: 'Gemini AI',
-        status: status === 'ok' ? (responseMs > 3000 ? 'degraded' : 'healthy') : 'degraded',
+        status: status === 'ONLINE' ? (responseMs > 3000 ? 'degraded' : 'healthy') : 'degraded',
         responseMs,
         checkedAt,
-        detail: status === 'ok' ? 'Operational' : (String(inner.detail || 'Not configured')),
+        detail: status === 'ONLINE' ? 'Operational' : (String(inner.error || 'Not configured')),
       }
     } catch {
       return { name: 'Gemini AI', status: 'offline', checkedAt, detail: 'Service unavailable' }

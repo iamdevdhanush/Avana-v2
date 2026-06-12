@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -16,6 +17,7 @@ from app.schemas.analytics import (
     AlertItem,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
 
@@ -26,6 +28,7 @@ async def get_dashboard(
 ):
     total_inc = await db.execute(text("SELECT COUNT(*) FROM incidents"))
     total_incidents = total_inc.scalar() or 0
+    logger.info(f"[DASHBOARD] analytics total incidents: {total_incidents}")
 
     active = await db.execute(text("SELECT COUNT(*) FROM users WHERE is_active = true"))
     active_users = active.scalar() or 0
@@ -152,6 +155,7 @@ async def get_district_analytics(
         """)
     )
     rows = result.fetchall()
+    logger.info(f"[DASHBOARD] analytics districts returned: {len(rows)}")
     return [
         {
             "district": r[0],
@@ -188,6 +192,7 @@ async def get_trends(
         {"start": start},
     )
     rows = result.fetchall()
+    logger.info(f"[DASHBOARD] analytics trends returned: {len(rows)} data points for {days} days")
     return {
         "period_days": days,
         "data": [

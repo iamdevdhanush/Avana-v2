@@ -244,6 +244,11 @@ async def generate_heatmap_for_bounds(
                             :lat, :lng, :score, :cat,
                             '{}'::jsonb, NOW(), NOW()
                         )
+                        ON CONFLICT (latitude, longitude)
+                        DO UPDATE SET
+                            score = :score,
+                            category = :cat,
+                            calculated_at = NOW()
                     """),
                     {"lat": r["latitude"], "lng": r["longitude"],
                      "score": r["score"], "cat": r["category"]},
@@ -281,6 +286,10 @@ async def get_heatmap_data(
 ) -> List[dict]:
     factory = get_session_factory()
     async with factory() as session:
+        total_risk = await session.execute(text("SELECT COUNT(*) FROM risk_scores"))
+        total_count = total_risk.scalar() or 0
+        logger.info(f"[HEATMAP] Total risk_scores in DB: {total_count}")
+
         result = await session.execute(
             text("""
                 SELECT DISTINCT ON (latitude, longitude)
@@ -295,6 +304,43 @@ async def get_heatmap_data(
              "sw_lng": sw_lng, "ne_lng": ne_lng},
         )
         rows = result.fetchall()
+        logger.info(f"[HEATMAP] points returned: {len(rows)} (bounds: {sw_lat:.4f}-{ne_lat:.4f}, {sw_lng:.4f}-{ne_lng:.4f})")
+
+        risk_recent = await session.execute(
+            text("SELECT COUNT(*) FROM risk_scores WHERE calculated_at >= NOW() - INTERVAL '48 hours'")
+        )
+        recent_count = risk_recent.scalar() or 0
+        logger.info(f"[HEATMAP] risk scores with calculated_at < 48h: {recent_count}")
+
+        risk_all_bounds = await session.execute(
+            text("""
+                SELECT COUNT(*) FROM risk_scores
+                WHERE latitude BETWEEN :sw_lat AND :ne_lat
+                  AND longitude BETWEEN :sw_lng AND :ne_lng
+            """),
+            {"sw_lat": sw_lat, "ne_lat": ne_lat,
+             "sw_lng": sw_lng, "ne_lng": ne_lng},
+        )
+        bounds_count = risk_all_bounds.scalar() or 0
+        logger.info(f"[HEATMAP] risk scores in bounds (any age): {bounds_count}")
+
+        if bounds_count > 0 and recent_count == 0:
+            logger.info("[HEATMAP] Removing 48h filter — all risk_scores are stale")
+            result = await session.execute(
+                text("""
+                    SELECT DISTINCT ON (latitude, longitude)
+                        latitude, longitude, score, category
+                    FROM risk_scores
+                    WHERE latitude BETWEEN :sw_lat AND :ne_lat
+                      AND longitude BETWEEN :sw_lng AND :ne_lng
+                    ORDER BY latitude, longitude, calculated_at DESC
+                """),
+                {"sw_lat": sw_lat, "ne_lat": ne_lat,
+                 "sw_lng": sw_lng, "ne_lng": ne_lng},
+            )
+            rows = result.fetchall()
+            logger.info(f"[HEATMAP] points returned after removing time filter: {len(rows)}")
+
         return [
             {"latitude": float(r[0]), "longitude": float(r[1]),
              "score": float(r[2]), "category": r[3]}

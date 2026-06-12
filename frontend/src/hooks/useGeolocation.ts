@@ -15,9 +15,20 @@ interface UseGeolocationReturn {
   error: string | null
   isLoading: boolean
   isWatching: boolean
+  isFallback: boolean
   startWatching: () => void
   stopWatching: () => void
   refreshPosition: () => void
+}
+
+const FALLBACK_POSITION: GeolocationState = {
+  latitude: 13.9299,
+  longitude: 75.5681,
+  accuracy: null,
+  speed: null,
+  heading: null,
+  altitude: null,
+  timestamp: Date.now(),
 }
 
 const defaultPosition: GeolocationState = {
@@ -35,12 +46,13 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isWatching, setIsWatching] = useState(false)
+  const [isFallback, setIsFallback] = useState(false)
   const watchIdRef = useRef<number | null>(null)
   const mountedRef = useRef(true)
 
   const defaultOptions = useMemo<PositionOptions>(() => ({
     enableHighAccuracy: true,
-    timeout: 10000,
+    timeout: 5000,
     maximumAge: 30000,
     ...options,
   }), [options])
@@ -58,6 +70,13 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
       timestamp: pos.timestamp,
     })
     setError(null)
+    setIsLoading(false)
+  }, [])
+
+  const activateFallback = useCallback(() => {
+    console.log(`[GEOLOCATION] Using fallback location: Shivamogga (13.9299, 75.5681)`)
+    setPosition(FALLBACK_POSITION)
+    setIsFallback(true)
     setIsLoading(false)
   }, [])
 
@@ -82,12 +101,13 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
         console.error(`[GEOLOCATION] Error (code ${err.code}): ${message}`)
     }
     setError(message)
-    setIsLoading(false)
-  }, [])
+    activateFallback()
+  }, [activateFallback])
 
   const startWatching = useCallback(() => {
     if (!navigator.geolocation) {
       setError('Geolocation is not supported by this browser.')
+      activateFallback()
       return
     }
 
@@ -99,7 +119,7 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
       handleError,
       defaultOptions
     )
-  }, [handleSuccess, handleError, defaultOptions])
+  }, [handleSuccess, handleError, defaultOptions, activateFallback])
 
   const stopWatching = useCallback(() => {
     if (watchIdRef.current !== null) {
@@ -113,12 +133,13 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
   const refreshPosition = useCallback(() => {
     if (!navigator.geolocation) {
       setError('Geolocation is not supported by this browser.')
+      activateFallback()
       return
     }
 
     setIsLoading(true)
     navigator.geolocation.getCurrentPosition(handleSuccess, handleError, defaultOptions)
-  }, [handleSuccess, handleError, defaultOptions])
+  }, [handleSuccess, handleError, defaultOptions, activateFallback])
 
   useEffect(() => {
     mountedRef.current = true
@@ -136,6 +157,7 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
     error,
     isLoading,
     isWatching,
+    isFallback,
     startWatching,
     stopWatching,
     refreshPosition,

@@ -81,6 +81,7 @@ async def admin_dashboard(
 ):
     total_inc = await db.execute(text("SELECT COUNT(*) FROM incidents"))
     total_incidents = total_inc.scalar() or 0
+    logger.info(f"[DASHBOARD] total incidents: {total_incidents}")
 
     active = await db.execute(text("SELECT COUNT(*) FROM users WHERE is_active = true"))
     active_users = active.scalar() or 0
@@ -119,6 +120,7 @@ async def admin_dashboard(
         )
         for r in by_district.fetchall()
     ]
+    logger.info(f"[DASHBOARD] district count: {len(incidents_by_district)}")
 
     total_all = max(total_incidents, 1)
     by_type = await db.execute(
@@ -141,6 +143,7 @@ async def admin_dashboard(
         {"start": thirty_days_ago},
     )
     incidents_trend = [TrendPoint(date=str(r[0]), value=float(r[1])) for r in inc_trend_rows.fetchall()]
+    logger.info(f"[DASHBOARD] trend count: {len(incidents_trend)}")
 
     recent_alerts_rows = await db.execute(
         text("""
