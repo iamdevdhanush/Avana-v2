@@ -53,10 +53,10 @@ async def score_location(lat: float, lng: float, district: Optional[str] = None)
             text("""
                 SELECT COUNT(*) as cnt,
                        COALESCE(AVG(CASE
-                           WHEN severity::text = 'critical' THEN 50
-                           WHEN severity::text = 'high' THEN 30
-                           WHEN severity::text = 'medium' THEN 15
-                           WHEN severity::text = 'low' THEN 5
+                            WHEN UPPER(severity::text) = 'CRITICAL' THEN 50
+                            WHEN UPPER(severity::text) = 'HIGH' THEN 30
+                            WHEN UPPER(severity::text) = 'MEDIUM' THEN 15
+                            WHEN UPPER(severity::text) = 'LOW' THEN 5
                            ELSE 10
                        END), 0) as avg_sev
                 FROM incidents

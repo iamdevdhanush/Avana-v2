@@ -72,10 +72,10 @@ async def _score_points_batch(points: List[Tuple[float, float]]) -> List[dict]:
                 SELECT pt.lat, pt.lng,
                        COUNT(inc.id) as cnt,
                        COALESCE(AVG(CASE
-                           WHEN inc.severity::text = 'critical' THEN 50
-                           WHEN inc.severity::text = 'high' THEN 30
-                           WHEN inc.severity::text = 'medium' THEN 15
-                           WHEN inc.severity::text = 'low' THEN 5
+                            WHEN UPPER(inc.severity::text) = 'CRITICAL' THEN 50
+                            WHEN UPPER(inc.severity::text) = 'HIGH' THEN 30
+                            WHEN UPPER(inc.severity::text) = 'MEDIUM' THEN 15
+                            WHEN UPPER(inc.severity::text) = 'LOW' THEN 5
                            ELSE 10
                        END), 0) as avg_sev
                 FROM (VALUES {values_clause}) AS pt(lat, lng)
