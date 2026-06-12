@@ -66,3 +66,47 @@ async def check_db() -> bool:
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
         return False
+
+
+async def validate_schema():
+    """Validate critical schema constraints at startup.
+    Logs warnings for schema drift that could cause runtime errors.
+    """
+    engine = get_engine()
+    async with engine.connect() as conn:
+        tables = await conn.execute(
+            text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+        )
+        table_names = {row[0] for row in tables}
+
+        checks = [
+            ("geocoding_cache", "id", "gen_random_uuid()"),
+        ]
+
+        for table, column, expected_default in checks:
+            if table not in table_names:
+                logger.warning(f"Schema validation: table '{table}' does not exist")
+                continue
+
+            result = await conn.execute(
+                text("""
+                    SELECT column_default
+                    FROM information_schema.columns
+                    WHERE table_name = :table AND column_name = :column
+                """),
+                {"table": table, "column": column},
+            )
+            row = result.fetchone()
+            if row is None:
+                logger.warning(f"Schema validation: column '{table}.{column}' does not exist")
+                continue
+
+            actual_default = row[0] or ""
+            if expected_default not in actual_default:
+                logger.warning(
+                    f"Schema drift detected: '{table}.{column}' "
+                    f"default is '{actual_default}', expected '{expected_default}'. "
+                    f"Run: alembic upgrade head"
+                )
+            else:
+                logger.info(f"Schema OK: '{table}.{column}' has expected default")

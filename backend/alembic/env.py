@@ -15,7 +15,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL_SYNC)
+# Derive sync URL from async URL (replace async driver with psycopg2)
+sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2").replace(
+    "postgresql://", "postgresql+psycopg2://"
+) if settings.DATABASE_URL else ""
+config.set_main_option("sqlalchemy.url", sync_url or "sqlite:///dev.db")
 
 target_metadata = Base.metadata
 

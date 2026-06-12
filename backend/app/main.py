@@ -11,7 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError, DataError
 
 from app.config import settings
-from app.database import init_db, check_db
+from app.database import init_db, check_db, validate_schema
 from app.api.router import api_router
 from app.utils.security import rate_limit_middleware
 
@@ -31,6 +31,9 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("Database is unreachable. Check DATABASE_URL or POSTGRES_* env vars.")
     await init_db()
     logger.info("Database initialized")
+
+    await validate_schema()
+    logger.info("Schema validation complete")
     yield
     logger.info("Shutting down")
 
