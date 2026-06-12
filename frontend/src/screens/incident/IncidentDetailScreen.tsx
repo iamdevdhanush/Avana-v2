@@ -174,7 +174,7 @@ export function IncidentDetailScreen() {
             icon={<MapPin className="h-4 w-4 text-[#EC4899]" />}
             label="Area"
             value={incident.location.address || 'Location data'}
-            sub={`${incident.location.lat.toFixed(4)}, ${incident.location.lng.toFixed(4)}`}
+            sub={incident.location.address ? `${incident.location.lat.toFixed(4)}, ${incident.location.lng.toFixed(4)}` : undefined}
           />
           <MetaCard
             icon={<ExternalLink className="h-4 w-4 text-[#F59E0B]" />}

@@ -1,10 +1,11 @@
 import * as React from 'react'
 import {
-  Navigation, ArrowDown, Loader2, Shield, Zap, Scale, X, Info,
+  Navigation, ArrowDown, Loader2, Shield, Zap, Scale, X, Info, MapPin,
 } from 'lucide-react'
 import { cn, formatDistance, formatDuration } from '@/lib/utils'
 import { useRouteSafety } from '@/hooks/useRouteSafety'
 import { useGeolocation } from '@/hooks/useGeolocation'
+import { useLocationName } from '@/hooks/useLocationName'
 import type { RouteOption } from '@/types'
 
 interface RoutePanelProps {
@@ -82,13 +83,20 @@ export function RoutePanel({ onClose }: RoutePanelProps) {
   const [to, setTo] = React.useState('')
   const [activeType, setActiveType] = React.useState<'safest' | 'fastest' | 'balanced'>('safest')
   const { position } = useGeolocation()
+  const locationName = useLocationName(position.latitude, position.longitude)
   const { routeResult, selectedRoute, isLoading, error, calculateRoute, selectRoute, clearRoute } = useRouteSafety()
 
   React.useEffect(() => {
     if (position.latitude && position.longitude) {
-      setFrom(`${position.latitude.toFixed(4)}, ${position.longitude.toFixed(4)}`)
+      const name = locationName.displayName
+      const coordFallback = `${position.latitude.toFixed(4)}, ${position.longitude.toFixed(4)}`
+      if (name && name !== coordFallback) {
+        setFrom(name)
+      } else {
+        setFrom(coordFallback)
+      }
     }
-  }, [position.latitude, position.longitude])
+  }, [position.latitude, position.longitude, locationName.displayName])
 
   const handleFindRoute = async () => {
     if (!position.latitude || !position.longitude) return

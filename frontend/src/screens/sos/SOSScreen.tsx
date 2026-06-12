@@ -7,6 +7,7 @@ import {
 import { useAuthStore } from '@/store/authStore'
 import { useUIStore } from '@/store/uiStore'
 import { useGeolocation } from '@/hooks/useGeolocation'
+import { useLocationName } from '@/hooks/useLocationName'
 import { sosApi } from '@/services/api'
 import { cn } from '@/lib/utils'
 import type { SOSEvent } from '@/types'
@@ -18,6 +19,7 @@ export function SOSScreen() {
   const { user } = useAuthStore()
   const { addToast } = useUIStore()
   const { position } = useGeolocation()
+  const locationName = useLocationName(position.latitude, position.longitude)
 
   const [status, setStatus] = React.useState<SOSStatus>('idle')
   const [countdown, setCountdown] = React.useState(5)
@@ -116,9 +118,18 @@ export function SOSScreen() {
               style={{ background: '#1A1A24', border: '1px solid #1F2937' }}
             >
               <MapPin className="h-4 w-4 text-[#EF4444] shrink-0" />
-              <span className="text-sm text-[#F9FAFB] font-mono">
-                {position.latitude.toFixed(5)}, {position.longitude?.toFixed(5)}
-              </span>
+              <div className="text-left min-w-0">
+                <p className="text-sm text-[#F9FAFB] truncate">
+                  {locationName.isLoading ? (
+                    <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />Detecting...</span>
+                  ) : (
+                    locationName.displayName
+                  )}
+                </p>
+                {position.accuracy && (
+                  <p className="text-[10px] text-[#6B7280]">±{Math.round(position.accuracy)}m</p>
+                )}
+              </div>
             </div>
           )}
 
@@ -320,15 +331,23 @@ export function SOSScreen() {
           <MapPin className="h-4 w-4 text-[#EF4444] shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-xs text-[#6B7280] font-medium">Current Location</p>
-            <p className="text-sm text-[#F9FAFB] font-mono truncate">
-              {position.latitude
-                ? `${position.latitude.toFixed(5)}, ${position.longitude?.toFixed(5)}`
-                : 'Detecting...'}
-            </p>
+            {position.latitude ? (
+              <>
+                <p className="text-sm text-[#F9FAFB] truncate">
+                  {locationName.isLoading ? (
+                    <span className="inline-flex items-center gap-1 text-[#6B7280]"><Loader2 className="h-3 w-3 animate-spin" />Detecting...</span>
+                  ) : (
+                    locationName.displayName
+                  )}
+                </p>
+                {position.accuracy && (
+                  <p className="text-[10px] text-[#6B7280] mt-0.5">±{Math.round(position.accuracy)}m</p>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-[#6B7280]">Detecting...</p>
+            )}
           </div>
-          {position.accuracy && (
-            <span className="text-[10px] text-[#6B7280] shrink-0">±{Math.round(position.accuracy)}m</span>
-          )}
         </div>
 
         {/* Recent SOS history */}

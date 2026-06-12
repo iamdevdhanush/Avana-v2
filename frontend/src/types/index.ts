@@ -238,6 +238,20 @@ export interface HeatmapResponse {
   districtSummaries: DistrictSummary[]
 }
 
+export interface ReverseGeocodeResult {
+  displayName: string
+  locality: string
+  suburb: string
+  district: string
+  city: string
+  state: string
+  country: string
+  latitude: number
+  longitude: number
+  cached: boolean
+  responseTimeMs: number
+}
+
 export interface RouteOption {
   geometry: [number, number][]
   segments: RouteSegment[]

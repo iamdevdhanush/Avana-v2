@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { useMapStore } from '@/store/mapStore'
 import { Separator } from '@/components/ui/separator'
+import { useUIStore } from '@/store/uiStore'
 
 interface MapControlsProps {
   onReportIncident?: () => void
@@ -21,6 +22,7 @@ interface MapControlsProps {
 
 export function MapControls({ onReportIncident }: MapControlsProps) {
   const map = useMap()
+  const { addToast } = useUIStore()
   const {
     mapType,
     setMapType,
@@ -41,7 +43,13 @@ export function MapControls({ onReportIncident }: MapControlsProps) {
       (pos) => {
         map.flyTo([pos.coords.latitude, pos.coords.longitude], 15)
       },
-      () => {
+      (err) => {
+        const msg = err.code === err.PERMISSION_DENIED
+          ? 'Location permission denied. Please enable in browser settings.'
+          : err.code === err.TIMEOUT
+          ? 'Location request timed out. Try again.'
+          : 'Could not get your location.'
+        addToast({ title: 'Location Error', description: msg, variant: 'destructive' })
         map.flyTo([12.9716, 77.5946], 12)
       }
     )
