@@ -32,6 +32,7 @@ export function HeatmapLayer({
   const heatLayerRef = useRef<L.HeatLayer | null>(null)
   const markerLayerRef = useRef<L.LayerGroup | null>(null)
 
+  console.log("[HEATMAP_DEBUG]", points.length, points.slice(0, 5))
   console.log(`[HEATMAP] points=${points.length}, weights=[${points.slice(0, 3).map(p => p.weight.toFixed(4)).join(', ')}...], max=${max}, radius=${radius}, blur=${blur}`)
   if (points.length > 0) {
     const ws = points.map(p => p.weight)
@@ -45,19 +46,29 @@ export function HeatmapLayer({
       (p) => [p.lat, p.lng, p.weight]
     )
 
-    if (heatLayerRef.current) {
-      console.log(`[HEATMAP] Updating existing layer with ${points.length} points`)
-      heatLayerRef.current.setLatLngs(heatData as unknown as L.LatLng[])
-    } else {
-      console.log(`[HEATMAP] Creating new L.heatLayer with ${points.length} points`)
-      heatLayerRef.current = L.heatLayer(heatData as unknown as L.LatLng[], {
-        radius,
-        blur,
-        maxZoom,
-        max,
-        gradient,
-      }).addTo(map)
-      console.log(`[HEATMAP] Layer added to map`)
+    console.log("[HEATMAP_RENDER]", heatData.length)
+
+    try {
+      if (heatLayerRef.current) {
+        console.log(`[HEATMAP] Updating existing layer with ${points.length} points`)
+        heatLayerRef.current.setLatLngs(heatData as unknown as L.LatLng[])
+      } else {
+        if (typeof L.heatLayer !== 'function') {
+          console.error("[HEATMAP] L.heatLayer is not a function — leaflet.heat may not be loaded")
+          return
+        }
+        console.log(`[HEATMAP] Creating new L.heatLayer with ${points.length} points`)
+        heatLayerRef.current = L.heatLayer(heatData as unknown as L.LatLng[], {
+          radius,
+          blur,
+          maxZoom,
+          max,
+          gradient,
+        }).addTo(map)
+        console.log(`[HEATMAP] Layer added to map`)
+      }
+    } catch (err) {
+      console.error("[HEATMAP] Failed to create/update heat layer:", err)
     }
 
     return () => {
@@ -86,7 +97,7 @@ export function HeatmapLayer({
     const group = L.layerGroup()
     const subset = points.length > 500 ? points.filter((_, i) => i % Math.ceil(points.length / 500) === 0) : points
     subset.forEach((p) => {
-      const color = p.weight > 60 ? '#ef4444' : p.weight > 30 ? '#f59e0b' : '#22c55e'
+      const color = p.weight > 0.6 ? '#ef4444' : p.weight > 0.3 ? '#f59e0b' : '#22c55e'
       L.circleMarker([p.lat, p.lng], {
         radius: 4,
         color,

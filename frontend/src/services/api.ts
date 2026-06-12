@@ -444,7 +444,7 @@ export const riskApi = {
         points: points.map((p) => ({
           lat: Number(p.latitude || 0),
           lng: Number(p.longitude || 0),
-          weight: Number(p.weight || 0),
+          weight: Number(p.weight || 0) / 100,
           riskCategory: p.risk_category ? String(p.risk_category) : undefined,
         })),
         generatedAt: inner.generated_at ? String(inner.generated_at) : null,
