@@ -38,7 +38,7 @@ from app.models.audit_log import AuditLog
 
 settings.SECRET_KEY = "test-secret-key-for-testing-purposes-only"
 settings.JWT_ALGORITHM = "HS256"
-settings.JWT_EXPIRATION_HOURS = 24
+settings.ACCESS_TOKEN_EXPIRE_MINUTES = 1440
 settings.KARNATAKA_BOUNDS = "11.5,13.5,74.0,78.5"
 settings.GEMINI_API_KEY = "test-key"
 settings.DEBUG = False

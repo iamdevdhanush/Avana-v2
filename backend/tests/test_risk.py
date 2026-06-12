@@ -75,8 +75,8 @@ async def test_get_heatmap_data(async_client: AsyncClient):
         assert "generated_at" in data
         assert "district_summaries" in data
         assert len(data["points"]) == 2
-        assert data["points"][0]["weight"] == 0.3
-        assert data["points"][1]["weight"] == 0.55
+        assert data["points"][0]["weight"] == 30.0
+        assert data["points"][1]["weight"] == 55.0
 
 
 @pytest.mark.asyncio
