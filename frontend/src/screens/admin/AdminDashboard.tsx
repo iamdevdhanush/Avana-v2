@@ -1,7 +1,7 @@
 import * as React from 'react'
 import {
   AlertTriangle, Users, Activity, Shield, TrendingUp,
-  BarChart3, ChevronRight, Bot, Clock, CheckCircle,
+  BarChart3, ChevronRight, Bot, Clock, CheckCircle, RefreshCw,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -9,6 +9,7 @@ import {
   PieChart as RePieChart, Pie, Cell,
 } from 'recharts'
 import { useNavigate } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { adminApi, analyticsApi } from '@/services/api'
 import { formatRelativeTime } from '@/lib/utils'
 import type { DashboardStats, DistrictAnalytics, CrimeTrend, LastIntelligenceRun } from '@/types'
@@ -29,10 +30,7 @@ const TOOLTIP_STYLE = {
 
 export function AdminDashboard() {
   const navigate = useNavigate()
-  const [stats, setStats] = React.useState<DashboardStats | null>(null)
-  const [districtData, setDistrictData] = React.useState<DistrictAnalytics[]>([])
-  const [trends, setTrends] = React.useState<CrimeTrend[]>([])
-  const [isLoading, setIsLoading] = React.useState(true)
+  const queryClient = useQueryClient()
   const [lastIntelRun, setLastIntelRun] = React.useState<LastIntelligenceRun | null>(null)
 
   React.useEffect(() => {
@@ -41,16 +39,45 @@ export function AdminDashboard() {
     if (stored) {
       try { setLastIntelRun(JSON.parse(stored) as LastIntelligenceRun) } catch { /* ignore */ }
     }
-    Promise.all([
-      adminApi.getDashboardStats(),
-      analyticsApi.getDistrictAnalytics(),
-      analyticsApi.getCrimeTrends({ days: 30 }),
-    ]).then(([s, d, t]) => {
-      setStats(s)
-      setDistrictData(d)
-      setTrends(t)
-    }).catch(() => {}).finally(() => setIsLoading(false))
+    // Re-read whenever the storage might have changed (pipeline ran in another tab)
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'avana_last_intel_run' && e.newValue) {
+        try { setLastIntelRun(JSON.parse(e.newValue) as LastIntelligenceRun) } catch { /* ignore */ }
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
   }, [])
+
+  // React Query — auto-refreshes every 60s and can be invalidated after pipeline runs
+  const { data: stats, isLoading: statsLoading, dataUpdatedAt: statsUpdatedAt, refetch: refetchAll } = useQuery({
+    queryKey: ['admin-dashboard'],
+    queryFn: () => adminApi.getDashboardStats(),
+    refetchInterval: 60_000,
+    staleTime: 55_000,
+    refetchOnWindowFocus: true,
+    retry: 2,
+  })
+
+  const { data: districtData = [], isLoading: districtLoading } = useQuery({
+    queryKey: ['district-analytics'],
+    queryFn: () => analyticsApi.getDistrictAnalytics(),
+    refetchInterval: 60_000,
+    staleTime: 55_000,
+    refetchOnWindowFocus: true,
+    retry: 2,
+  })
+
+  const { data: trends = [], isLoading: trendsLoading } = useQuery({
+    queryKey: ['crime-trends-30'],
+    queryFn: () => analyticsApi.getCrimeTrends({ days: 30 }),
+    refetchInterval: 60_000,
+    staleTime: 55_000,
+    refetchOnWindowFocus: true,
+    retry: 2,
+  })
+
+  const isLoading = statsLoading || districtLoading || trendsLoading
 
   const statCards = [
     {
