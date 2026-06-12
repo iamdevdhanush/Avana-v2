@@ -56,7 +56,7 @@ async def get_heatmap(
         HeatmapPoint(
             latitude=p.get("latitude", 0),
             longitude=p.get("longitude", 0),
-            weight=p.get("score", 50.0) / 100.0,
+            weight=p.get("score", 50.0),
             risk_category=p.get("category", "Moderate"),
         )
         for p in points_data
