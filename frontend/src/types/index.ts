@@ -362,12 +362,13 @@ export interface PipelineAgent {
 
 export interface PipelineRunResult {
   name: string
-  status: 'completed' | 'failed' | 'triggered'
+  status: 'completed' | 'failed' | 'triggered' | 'skipped'
   incidentsSaved?: number
   errors?: string[]
   durationSeconds?: number
   articlesProcessed?: number
   ranAt: string
+  reason?: string
 }
 
 export interface LastIntelligenceRun {

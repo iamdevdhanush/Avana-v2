@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     SOS_NOTIFICATION_EMAIL_ENABLED: bool = False
 
     ENABLE_INTELLIGENCE_PIPELINE: bool = True
+    MOCK_INTELLIGENCE_MODE: bool = False
 
     def build_database_url(self) -> str:
         if self.DATABASE_URL:

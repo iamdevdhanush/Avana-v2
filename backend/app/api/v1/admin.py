@@ -1,4 +1,6 @@
 import uuid
+import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -16,12 +18,36 @@ from app.schemas.admin import (
     UserManagementResponse,
 )
 from app.schemas.analytics import DashboardStats, DistrictStats, TypeStats, TrendPoint, AlertItem
+from app.services.gemini import GeminiQuotaExceeded
 from app.pipeline.intelligence import run_intelligence_pipeline
 from app.pipeline.community import process_pending_reports
 from app.pipeline.risk import recalculate_all_risk_scores
 from app.pipeline.heatmap import generate_heatmap_for_bounds
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+# TASK 7: Pipeline execution lock — prevents concurrent runs
+_pipeline_locks: dict[str, asyncio.Lock] = {}
+
+async def _acquire_pipeline_lock(pipeline_name: str) -> bool:
+    """Try to acquire pipeline lock. Returns True if acquired, False if already running."""
+    if pipeline_name not in _pipeline_locks:
+        _pipeline_locks[pipeline_name] = asyncio.Lock()
+    lock = _pipeline_locks[pipeline_name]
+    acquired = await lock.acquire() if not lock.locked() else False
+    if acquired:
+        logger.info(f"[LOCK] Pipeline '{pipeline_name}' lock acquired")
+    else:
+        logger.warning(f"[LOCK] Pipeline '{pipeline_name}' already running — rejected")
+    return acquired
+
+def _release_pipeline_lock(pipeline_name: str):
+    lock = _pipeline_locks.get(pipeline_name)
+    if lock and lock.locked():
+        lock.release()
+        logger.info(f"[LOCK] Pipeline '{pipeline_name}' lock released")
 
 
 async def _log_admin_action(
@@ -369,8 +395,30 @@ async def run_pipeline(
             detail=f"Unknown pipeline: {pipeline_name}. Available: {list(pipeline_map.keys())}",
         )
 
+    acquired = await _acquire_pipeline_lock(pipeline_name)
+    if not acquired:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": f"Pipeline '{pipeline_name}' is already running"},
+        )
+
     try:
         result = await runner()
+
+        if result.get("status") == "skipped":
+            reason = result.get("reason", "gemini_unavailable")
+            log_details = {
+                "pipeline": pipeline_name,
+                "status": "skipped",
+                "reason": reason,
+                "duration_seconds": result.get("duration_seconds", 0),
+            }
+            await _log_admin_action(
+                request, db, admin, "run_pipeline_skipped", "pipeline",
+                pipeline_name, log_details, severity="warning",
+            )
+            return {"pipeline": pipeline_name, "status": "skipped", "result": result}
+
         # Build structured log details with execution counts for observability
         summary = result.get("summary", {})
         steps = result.get("steps", {})
@@ -395,17 +443,53 @@ async def run_pipeline(
             pipeline_name, log_details, severity="info",
         )
         return {"pipeline": pipeline_name, "status": "triggered", "result": result}
-    except Exception as e:
+    except GeminiQuotaExceeded as e:
+        err_str = str(e)
+        log_details = {
+            "error": err_str,
+            "pipeline": pipeline_name,
+            "status": "failed",
+            "reason": "GEMINI_QUOTA_EXCEEDED",
+        }
         await _log_admin_action(
             request, db, admin, "run_pipeline_failed", "pipeline",
             pipeline_name,
-            {"error": str(e), "pipeline": pipeline_name, "status": "failed"},
+            log_details,
             "error",
         )
+        await db.commit()
+        from app.services.gemini import gemini_service
+        gs = gemini_service.get_status()
+        retry_after = gs.get("retry_after_seconds", 900)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "reason": "quota_exceeded",
+                "error": "Gemini API quota exceeded",
+                "retry_after_seconds": retry_after,
+                "retry_after_minutes": round(retry_after / 60, 1),
+            },
+        )
+    except Exception as e:
+        err_str = str(e)
+        log_details = {
+            "error": err_str,
+            "pipeline": pipeline_name,
+            "status": "failed",
+        }
+        await _log_admin_action(
+            request, db, admin, "run_pipeline_failed", "pipeline",
+            pipeline_name,
+            log_details,
+            "error",
+        )
+        await db.commit()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Pipeline run failed: {str(e)}",
         )
+    finally:
+        _release_pipeline_lock(pipeline_name)
 
 
 @router.get("/pipeline/last-run")

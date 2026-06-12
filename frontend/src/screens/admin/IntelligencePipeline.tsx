@@ -76,24 +76,35 @@ function formatDuration(secs: number): string {
 function RunResultCard({ result, onDismiss }: { result: PipelineRunResult; onDismiss: () => void }) {
   const hasErrors = result.errors && result.errors.length > 0
   const isSuccess = result.status === 'completed' && !hasErrors
+  const isSkipped = result.status === 'skipped'
 
   return (
     <div
       className="rounded-xl p-4 border"
       style={{
-        background: isSuccess ? 'rgba(34,197,94,0.05)' : 'rgba(239,68,68,0.05)',
-        borderColor: isSuccess ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)',
+        background: isSkipped
+          ? 'rgba(245,158,11,0.05)'
+          : isSuccess
+            ? 'rgba(34,197,94,0.05)'
+            : 'rgba(239,68,68,0.05)',
+        borderColor: isSkipped
+          ? 'rgba(245,158,11,0.2)'
+          : isSuccess
+            ? 'rgba(34,197,94,0.2)'
+            : 'rgba(239,68,68,0.2)',
       }}
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
-          {isSuccess ? (
+          {isSkipped ? (
+            <AlertTriangle className="h-4 w-4 text-[#F59E0B]" />
+          ) : isSuccess ? (
             <CheckCircle className="h-4 w-4 text-[#22C55E]" />
           ) : (
             <XCircle className="h-4 w-4 text-[#EF4444]" />
           )}
           <span className="text-sm font-bold text-[#F9FAFB]">
-            {result.name} — {result.status}
+            {result.name} — {isSkipped ? 'Skipped' : result.status}
           </span>
         </div>
         <button
@@ -104,28 +115,36 @@ function RunResultCard({ result, onDismiss }: { result: PipelineRunResult; onDis
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-3">
-        <div className="text-center">
-          <p className="text-lg font-black" style={{ color: '#22C55E' }}>
-            {result.incidentsSaved ?? '—'}
-          </p>
-          <p className="text-[10px] text-[#6B7280]">Incidents Saved</p>
+      {isSkipped ? (
+        <div className="text-xs text-[#F59E0B] mb-2">
+          {result.reason?.includes('quota')
+            ? 'Gemini API quota exhausted. Skipped.'
+            : 'Gemini unavailable. Skipped.'}
         </div>
-        <div className="text-center">
-          <p className="text-lg font-black text-[#A855F7]">
-            {result.articlesProcessed ?? '—'}
-          </p>
-          <p className="text-[10px] text-[#6B7280]">Articles Processed</p>
+      ) : (
+        <div className="grid grid-cols-3 gap-3 mb-3">
+          <div className="text-center">
+            <p className="text-lg font-black" style={{ color: '#22C55E' }}>
+              {result.incidentsSaved ?? '—'}
+            </p>
+            <p className="text-[10px] text-[#6B7280]">Incidents Saved</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-black text-[#A855F7]">
+              {result.articlesProcessed ?? '—'}
+            </p>
+            <p className="text-[10px] text-[#6B7280]">Articles Processed</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-black text-[#F9FAFB]">
+              {result.durationSeconds != null ? formatDuration(result.durationSeconds) : '—'}
+            </p>
+            <p className="text-[10px] text-[#6B7280]">Duration</p>
+          </div>
         </div>
-        <div className="text-center">
-          <p className="text-lg font-black text-[#F9FAFB]">
-            {result.durationSeconds != null ? formatDuration(result.durationSeconds) : '—'}
-          </p>
-          <p className="text-[10px] text-[#6B7280]">Duration</p>
-        </div>
-      </div>
+      )}
 
-      {hasErrors && (
+      {!isSkipped && hasErrors && (
         <div className="mt-2 space-y-1">
           {result.errors!.slice(0, 3).map((err, i) => (
             <div key={i} className="flex items-start gap-1.5 text-[11px] text-[#EF4444]">
@@ -149,6 +168,7 @@ function RunResultCard({ result, onDismiss }: { result: PipelineRunResult; onDis
 export function IntelligencePipeline() {
   const queryClient = useQueryClient()
   const [runResults, setRunResults] = React.useState<Map<string, PipelineRunResult>>(new Map())
+  const [pipelineError, setPipelineError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     const stored = localStorage.getItem('avana_last_intel_run')
@@ -171,6 +191,7 @@ export function IntelligencePipeline() {
   const runMutation = useMutation({
     mutationFn: (name: PipelineName) => adminApi.runPipeline(name),
     onSuccess: (result) => {
+      setPipelineError(null)
       // Store result so HomeScreen and AdminDashboard can display last run
       setRunResults((prev) => new Map(prev).set(result.name, result))
 
@@ -183,6 +204,24 @@ export function IntelligencePipeline() {
       queryClient.invalidateQueries({ queryKey: ['incidents-nearby'] })
       queryClient.invalidateQueries({ queryKey: ['pipeline-status'] })
       queryClient.invalidateQueries({ queryKey: ['system-health'] })
+    },
+    onError: (err: Error) => {
+      const msg = err.message || ''
+      try {
+        const parsed = JSON.parse(msg)
+        if (parsed?.reason === 'quota_exceeded') {
+          const retryMin = parsed.retry_after_minutes ?? 15
+          setPipelineError(
+            `Gemini API quota exhausted. Upgrade billing or replace API key. Retry in ~${retryMin} min.`
+          )
+          return
+        }
+      } catch { /* not JSON, fall through */ }
+      if (msg.toLowerCase().includes('quota')) {
+        setPipelineError('Gemini API quota exhausted. Upgrade billing or replace API key.')
+      } else {
+        setPipelineError(msg)
+      }
     },
   })
 
@@ -217,6 +256,25 @@ export function IntelligencePipeline() {
         </div>
 
         <SystemHealthBar />
+
+        {pipelineError && (
+          <div
+            className="flex items-center gap-3 px-4 py-3 rounded-xl"
+            style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}
+          >
+            <AlertTriangle className="h-4 w-4 text-[#EF4444] shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-[#EF4444]">Pipeline Failed</p>
+              <p className="text-xs text-[#EF4444] mt-0.5">{pipelineError}</p>
+            </div>
+            <button
+              onClick={() => setPipelineError(null)}
+              className="ml-auto text-xs text-[#EF4444] font-medium shrink-0"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {isError && (
           <div
