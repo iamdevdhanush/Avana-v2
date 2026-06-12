@@ -120,8 +120,8 @@ async def reverse_geocode(body: ReverseGeocodeRequest, db: AsyncSession = Depend
     try:
         await db.execute(
             text("""
-                INSERT INTO geocoding_cache (location_text, latitude, longitude, display_name, last_verified, created_at)
-                VALUES (:key, :lat, :lng, :name, NOW(), NOW())
+                INSERT INTO geocoding_cache (id, location_text, latitude, longitude, display_name, last_verified, created_at)
+                VALUES (gen_random_uuid(), :key, :lat, :lng, :name, NOW(), NOW())
                 ON CONFLICT (location_text) DO UPDATE SET last_verified = NOW(), display_name = :name
             """),
             {"key": cache_key, "lat": lat, "lng": lng, "name": display_name or geo_result.get("display_name", "")},
