@@ -90,10 +90,12 @@ class GeminiService:
         for attempt in range(1, 4):
             try:
                 self._check_rate_limit()
-                kwargs = {}
+                import google.generativeai as genai
                 if system_instruction:
-                    kwargs["system_instruction"] = system_instruction
-                response = self.model.generate_content(prompt, **kwargs)
+                    model = genai.GenerativeModel("gemini-2.0-flash", system_instruction=system_instruction)
+                else:
+                    model = self.model
+                response = model.generate_content(prompt)
                 if not response or not response.text:
                     logger.warning("Gemini returned empty response")
                     return ""
