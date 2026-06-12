@@ -180,6 +180,7 @@ async def health_database():
 
 @app.get("/health/gemini")
 async def health_gemini():
+    import asyncio
     from app.services.gemini import gemini_service
     if not gemini_service.is_available():
         return JSONResponse(
@@ -187,10 +188,15 @@ async def health_gemini():
             content={"status": "unhealthy", "error": gemini_service._init_error or "Gemini not available"},
         )
     try:
-        result = gemini_service.generate("Respond with only the word: OK")
+        # Run in executor to avoid blocking the async event loop
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: gemini_service.generate("Respond with only the word: OK"),
+        )
         if result and "OK" in result:
             return {"status": "healthy", "model": "gemini-2.0-flash"}
-        if not result and gemini_service._init_error and "quota" in gemini_service._init_error.lower():
+        if not result and gemini_service._init_error and "quota" in (gemini_service._init_error or "").lower():
             return JSONResponse(
                 status_code=503,
                 content={"status": "unhealthy", "error": "Gemini daily quota exhausted — try again tomorrow or upgrade to a paid plan"},

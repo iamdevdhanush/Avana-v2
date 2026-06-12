@@ -786,19 +786,38 @@ export const healthApi = {
     const checkedAt = new Date().toISOString()
     const t0 = Date.now()
     try {
-      const { data: raw } = await api.get('/route/health', { timeout: 5000 })
+      const { data: raw } = await api.get('/route/health', { timeout: 8000 })
       const responseMs = Date.now() - t0
       const inner = (raw.data || raw) as Record<string, unknown>
-      const status = String(inner.status || 'healthy')
+      const backendStatus = String(inner.status || 'healthy')
+      // Use backend-measured response_ms if available, else our round-trip
+      const probeMs = inner.response_ms != null ? Number(inner.response_ms) : responseMs
+      const status: ServiceHealth['status'] =
+        backendStatus === 'healthy' ? (probeMs > 2000 ? 'degraded' : 'healthy')
+        : backendStatus === 'offline' ? 'offline'
+        : 'degraded'
       return {
         name: 'Route Engine',
-        status: status === 'healthy' ? (responseMs > 2000 ? 'degraded' : 'healthy') : 'degraded',
-        responseMs,
+        status,
+        responseMs: probeMs,
         checkedAt,
-        detail: String(inner.provider || 'OSRM'),
+        detail: inner.detail ? String(inner.detail) : String(inner.provider || 'OSRM'),
       }
-    } catch {
-      return { name: 'Route Engine', status: 'offline', checkedAt, detail: 'OSRM unreachable' }
+    } catch (err: unknown) {
+      const responseMs = Date.now() - t0
+      // Axios surfaces 503 as an error — check response body for status
+      const errResp = (err as { response?: { data?: Record<string, unknown>; status?: number } }).response
+      if (errResp?.status === 503) {
+        const body = errResp.data || {}
+        return {
+          name: 'Route Engine',
+          status: 'offline',
+          responseMs,
+          checkedAt,
+          detail: String(body.detail || 'OSRM unreachable'),
+        }
+      }
+      return { name: 'Route Engine', status: 'offline', responseMs, checkedAt, detail: 'OSRM unreachable' }
     }
   },
 

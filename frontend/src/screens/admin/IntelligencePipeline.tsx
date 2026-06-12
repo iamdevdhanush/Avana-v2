@@ -171,8 +171,18 @@ export function IntelligencePipeline() {
   const runMutation = useMutation({
     mutationFn: (name: PipelineName) => adminApi.runPipeline(name),
     onSuccess: (result) => {
+      // Store result so HomeScreen and AdminDashboard can display last run
       setRunResults((prev) => new Map(prev).set(result.name, result))
+
+      // Invalidate ALL dashboard-related queries so the dashboard reflects
+      // the new incidents/risk scores immediately after pipeline completes
+      queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['district-analytics'] })
+      queryClient.invalidateQueries({ queryKey: ['crime-trends-30'] })
+      queryClient.invalidateQueries({ queryKey: ['crime-trends-14'] })
+      queryClient.invalidateQueries({ queryKey: ['incidents-nearby'] })
       queryClient.invalidateQueries({ queryKey: ['pipeline-status'] })
+      queryClient.invalidateQueries({ queryKey: ['system-health'] })
     },
   })
 

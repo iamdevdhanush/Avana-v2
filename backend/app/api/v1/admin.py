@@ -309,15 +309,42 @@ async def change_user_status(
 
 @router.get("/pipeline/status")
 async def get_pipeline_status(
+    db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
+    """Returns pipeline status enriched with last-run data from audit_logs."""
+    # Fetch last run timestamps for each pipeline from audit_logs
+    last_runs = await db.execute(
+        text("""
+            SELECT resource_id, MAX(created_at) as last_run,
+                   (array_agg(details ORDER BY created_at DESC))[1] as last_details
+            FROM audit_logs
+            WHERE action = 'run_pipeline'
+              AND severity = 'info'
+            GROUP BY resource_id
+        """)
+    )
+    last_run_map = {}
+    for row in last_runs.fetchall():
+        last_run_map[row[0]] = {
+            "last_run": row[1].isoformat() if row[1] else None,
+            "details": row[2] or {},
+        }
+
+    pipelines = [
+        {"name": "intelligence", "status": "idle", "schedule_minutes": 360},
+        {"name": "community",    "status": "idle", "schedule_minutes": 5},
+        {"name": "risk_scoring", "status": "available"},
+        {"name": "heatmap",      "status": "idle"},
+    ]
+    for p in pipelines:
+        run_info = last_run_map.get(p["name"])
+        if run_info:
+            p["last_run_at"] = run_info["last_run"]
+            p["last_run_details"] = run_info["details"]
+
     return {
-        "pipelines": [
-            {"name": "intelligence", "status": "idle", "schedule_minutes": 360},
-            {"name": "community", "status": "idle", "schedule_minutes": 5},
-            {"name": "risk_scoring", "status": "available"},
-            {"name": "heatmap", "status": "idle"},
-        ],
+        "pipelines": pipelines,
         "pipeline": "operational",
     }
 
@@ -344,11 +371,68 @@ async def run_pipeline(
 
     try:
         result = await runner()
-        await _log_admin_action(request, db, admin, "run_pipeline", "pipeline", pipeline_name)
+        # Build structured log details with execution counts for observability
+        summary = result.get("summary", {})
+        steps = result.get("steps", {})
+        log_details = {
+            "pipeline": pipeline_name,
+            "status": "completed",
+            "articles_fetched": summary.get("articles_fetched") or steps.get("fetch", {}).get("count", 0),
+            "incidents_extracted": summary.get("incidents_extracted") or steps.get("extract", {}).get("count", 0),
+            "incidents_created": summary.get("incidents_saved") or steps.get("save", {}).get("saved", 0),
+            "risk_scores_updated": summary.get("risk_scores_updated") or steps.get("risk_recalc", {}).get("updated", 0),
+            "heatmap_cells_updated": summary.get("heatmap_points_generated") or steps.get("heatmap", {}).get("points_generated", 0),
+            "duration_seconds": result.get("duration_seconds") or summary.get("duration_seconds", 0),
+            "completed_at": summary.get("completed_at"),
+            "step_errors": [
+                f"{k}: {v.get('error','')}"
+                for k, v in steps.items()
+                if isinstance(v, dict) and v.get("status") == "failed"
+            ],
+        }
+        await _log_admin_action(
+            request, db, admin, "run_pipeline", "pipeline",
+            pipeline_name, log_details, severity="info",
+        )
         return {"pipeline": pipeline_name, "status": "triggered", "result": result}
     except Exception as e:
-        await _log_admin_action(request, db, admin, "run_pipeline_failed", "pipeline", pipeline_name, {"error": str(e)}, "error")
+        await _log_admin_action(
+            request, db, admin, "run_pipeline_failed", "pipeline",
+            pipeline_name,
+            {"error": str(e), "pipeline": pipeline_name, "status": "failed"},
+            "error",
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Pipeline run failed: {str(e)}",
         )
+
+
+@router.get("/pipeline/last-run")
+async def get_last_pipeline_run(
+    pipeline_name: str = "intelligence",
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Returns the most recent pipeline execution summary from audit_logs."""
+    result = await db.execute(
+        text("""
+            SELECT details, created_at
+            FROM audit_logs
+            WHERE action = 'run_pipeline'
+              AND resource_id = :name
+              AND severity = 'info'
+            ORDER BY created_at DESC
+            LIMIT 1
+        """),
+        {"name": pipeline_name},
+    )
+    row = result.fetchone()
+    if not row:
+        return {"found": False, "pipeline": pipeline_name}
+    return {
+        "found": True,
+        "pipeline": pipeline_name,
+        "ran_at": row[1].isoformat() if row[1] else None,
+        **row[0],
+    }

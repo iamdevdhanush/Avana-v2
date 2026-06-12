@@ -9,7 +9,7 @@ import {
   PieChart as RePieChart, Pie, Cell,
 } from 'recharts'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { adminApi, analyticsApi } from '@/services/api'
 import { formatRelativeTime } from '@/lib/utils'
 import type { DashboardStats, DistrictAnalytics, CrimeTrend, LastIntelligenceRun } from '@/types'
@@ -30,7 +30,6 @@ const TOOLTIP_STYLE = {
 
 export function AdminDashboard() {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
   const [lastIntelRun, setLastIntelRun] = React.useState<LastIntelligenceRun | null>(null)
 
   React.useEffect(() => {
@@ -50,7 +49,7 @@ export function AdminDashboard() {
   }, [])
 
   // React Query — auto-refreshes every 60s and can be invalidated after pipeline runs
-  const { data: stats, isLoading: statsLoading, dataUpdatedAt: statsUpdatedAt, refetch: refetchAll } = useQuery({
+  const { data: stats, isLoading: statsLoading, dataUpdatedAt, refetch: refetchStats } = useQuery({
     queryKey: ['admin-dashboard'],
     queryFn: () => adminApi.getDashboardStats(),
     refetchInterval: 60_000,
@@ -59,7 +58,7 @@ export function AdminDashboard() {
     retry: 2,
   })
 
-  const { data: districtData = [], isLoading: districtLoading } = useQuery({
+  const { data: districtData = [], isLoading: districtLoading, refetch: refetchDistrict } = useQuery({
     queryKey: ['district-analytics'],
     queryFn: () => analyticsApi.getDistrictAnalytics(),
     refetchInterval: 60_000,
@@ -68,7 +67,7 @@ export function AdminDashboard() {
     retry: 2,
   })
 
-  const { data: trends = [], isLoading: trendsLoading } = useQuery({
+  const { data: trends = [], isLoading: trendsLoading, refetch: refetchTrends } = useQuery({
     queryKey: ['crime-trends-30'],
     queryFn: () => analyticsApi.getCrimeTrends({ days: 30 }),
     refetchInterval: 60_000,
@@ -78,6 +77,16 @@ export function AdminDashboard() {
   })
 
   const isLoading = statsLoading || districtLoading || trendsLoading
+
+  const handleManualRefresh = React.useCallback(() => {
+    refetchStats()
+    refetchDistrict()
+    refetchTrends()
+  }, [refetchStats, refetchDistrict, refetchTrends])
+
+  const lastUpdatedTime = dataUpdatedAt
+    ? new Date(dataUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : null
 
   const statCards = [
     {
@@ -150,9 +159,24 @@ export function AdminDashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-black text-[#F9FAFB]">Admin Dashboard</h1>
-            <p className="text-sm text-[#6B7280] mt-0.5">Safety platform intelligence overview</p>
+            <p className="text-sm text-[#6B7280] mt-0.5">
+              Safety platform intelligence overview
+              {lastUpdatedTime && (
+                <span className="ml-2 text-[10px] text-[#4B5563]">· Updated {lastUpdatedTime}</span>
+              )}
+            </p>
           </div>
           <div className="flex gap-2">
+            <button
+              onClick={handleManualRefresh}
+              disabled={isLoading}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all"
+              style={{ background: '#1A1A24', border: '1px solid #1F2937', color: '#D1D5DB' }}
+              title="Refresh dashboard data"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
             <button
               onClick={() => navigate('/admin/incidents')}
               className="px-3 py-2 rounded-xl text-xs font-semibold transition-all"
