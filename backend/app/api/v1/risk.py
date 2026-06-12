@@ -65,6 +65,7 @@ async def get_heatmap(
         )
         for p in points_data
     ]
+    logger.info("[HEATMAP_DEBUG] Returning %s points", len(points))
 
     district_result = await db.execute(
         text("""
