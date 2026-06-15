@@ -8,8 +8,12 @@ const LEVELS = [
   { range: '0–24', label: 'Low', color: '#00E676', level: 1 },
 ]
 
-export function HeatmapLegend() {
-  const [visible, setVisible] = React.useState(true)
+interface HeatmapLegendProps {
+  visible?: boolean
+}
+
+export function HeatmapLegend({ visible: initialVisible = true }: HeatmapLegendProps) {
+  const [visible, setVisible] = React.useState(initialVisible)
 
   return (
     <div
