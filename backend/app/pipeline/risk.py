@@ -193,10 +193,7 @@ async def recalculate_all_risk_scores() -> dict:
                                  metadata, calculated_at, created_at)
                             VALUES (
                                 gen_random_uuid(),
-                                COALESCE(
-                                    (SELECT id FROM locations ORDER BY created_at LIMIT 1),
-                                    gen_random_uuid()
-                                ),
+                                :location_id,
                                 :lat, :lng, :score, :cat,
                                 '{}'::jsonb, NOW(), NOW()
                             )
@@ -206,7 +203,7 @@ async def recalculate_all_risk_scores() -> dict:
                                 category = EXCLUDED.category,
                                 calculated_at = NOW()
                         """),
-                        {"lat": lat, "lng": lng, "score": result["score"], "cat": result["category"]},
+                        {"lat": lat, "lng": lng, "score": result["score"], "cat": result["category"], "location_id": location_id},
                     )
                     await session.commit()
                     updated += 1

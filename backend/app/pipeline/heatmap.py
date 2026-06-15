@@ -223,7 +223,7 @@ async def generate_heatmap_for_bounds(
                 })
 
     logger.info(f"[HEATMAP_START] Inserting {len(all_results)} heatmap points into risk_scores")
-    await ensure_default_location()
+    location_id = await ensure_default_location()
     factory = get_session_factory()
     async with factory() as session:
         failures = 0
@@ -237,10 +237,7 @@ async def generate_heatmap_for_bounds(
                              metadata, calculated_at, created_at)
                         VALUES (
                             gen_random_uuid(),
-                            COALESCE(
-                                (SELECT id FROM locations ORDER BY created_at LIMIT 1),
-                                gen_random_uuid()
-                            ),
+                            :location_id,
                             :lat, :lng, :score, :cat,
                             '{}'::jsonb, NOW(), NOW()
                         )
@@ -251,7 +248,8 @@ async def generate_heatmap_for_bounds(
                             calculated_at = NOW()
                     """),
                     {"lat": r["latitude"], "lng": r["longitude"],
-                     "score": r["score"], "cat": r["category"]},
+                     "score": r["score"], "cat": r["category"],
+                     "location_id": location_id},
                 )
             except Exception as e:
                 failures += 1
