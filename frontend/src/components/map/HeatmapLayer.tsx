@@ -6,19 +6,27 @@ import type { HeatmapPoint } from '@/types'
 
 const HEAT_GRADIENT: Record<number, string> = {
   0.0: 'rgba(0,0,0,0)',
-  0.2: '#00E676',
-  0.4: '#FFD600',
-  0.6: '#FF8C00',
-  0.8: '#FF1744',
+  0.25: '#00E676',
+  0.50: '#FFD600',
+  0.75: '#FF8C00',
+  0.90: '#FF1744',
   1.0: '#D50000',
 }
 
-function getRiskColor(weight: number): string {
-  if (weight >= 0.9) return '#D50000'
-  if (weight >= 0.75) return '#FF1744'
-  if (weight >= 0.5) return '#FF8C00'
-  if (weight >= 0.25) return '#FFD600'
-  return '#00E676'
+function nonlinearWeight(score01: number): number {
+  if (score01 <= 0) return 0
+  if (score01 <= 0.25) return score01 * 0.16
+  if (score01 <= 0.5) return 0.04 + (score01 - 0.25) * 0.64
+  if (score01 <= 0.75) return 0.20 + (score01 - 0.5) * 2.4
+  if (score01 <= 0.9) return 0.80 + (score01 - 0.75) * 0.67
+  return 0.90 + (score01 - 0.9) * 1.0
+}
+
+function getRadius(zoom: number): number {
+  if (zoom >= 15) return 20
+  if (zoom >= 13) return 28
+  if (zoom >= 11) return 38
+  return 50
 }
 
 interface HeatmapLayerProps {
@@ -39,18 +47,23 @@ export function HeatmapLayer({ points, onHotspotClick }: HeatmapLayerProps) {
 
     if (points.length === 0) return
 
-    const heatData: Array<[number, number, number]> = points.map(
-      (p) => [p.lat, p.lng, p.weight]
-    )
+    const zoom = map.getZoom()
+    const radius = getRadius(zoom)
 
-    if (typeof L.heatLayer !== 'function') return
+    const heatData: Array<[number, number, number]> = points.map((p) => {
+      const rawWeight = Math.min(1, Math.max(0, p.weight))
+      const w = nonlinearWeight(rawWeight)
+      return [p.lat, p.lng, w]
+    })
 
-    const radius = map.getZoom() >= 13 ? 25 : map.getZoom() >= 11 ? 35 : 45
+    if (typeof L.heatLayer !== 'function') {
+      return
+    }
 
     heatLayerRef.current = L.heatLayer(heatData as unknown as L.LatLng[], {
       radius,
-      blur: radius * 0.65,
-      maxZoom: 18,
+      blur: Math.round(radius * 0.7),
+      maxZoom: 16,
       max: 1,
       gradient: HEAT_GRADIENT,
     }).addTo(map)
@@ -73,10 +86,10 @@ export function HeatmapLayer({ points, onHotspotClick }: HeatmapLayerProps) {
 
     const handler = (e: L.LeafletMouseEvent) => {
       const clickPt = map.latLngToContainerPoint(e.latlng)
-      const threshold = 60 + 40 * (1 / Math.max(1, map.getZoom() - 8))
+      const threshold = 50 + 50 * (1 / Math.max(1, map.getZoom() - 8))
       let nearest: { lat: number; lng: number; weight: number; dist: number } | null = null
 
-      const step = Math.max(1, Math.floor(points.length / 200))
+      const step = Math.max(1, Math.floor(points.length / 150))
       for (let i = 0; i < points.length; i += step) {
         const p = points[i]
         const pt = map.latLngToContainerPoint([p.lat, p.lng])
@@ -109,7 +122,13 @@ export function HeatmapLayer({ points, onHotspotClick }: HeatmapLayerProps) {
       const style = document.createElement('style')
       style.id = 'heatmap-glow-style'
       style.textContent = `
-        .leaflet-heatmap-layer { mix-blend-mode: screen; }
+        .leaflet-heatmap-layer {
+          mix-blend-mode: screen;
+          will-change: transform;
+        }
+        .leaflet-heatmap-layer canvas {
+          image-rendering: auto;
+        }
       `
       document.head.appendChild(style)
     }

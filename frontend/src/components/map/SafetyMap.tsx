@@ -27,7 +27,6 @@ const userIcon = L.divIcon({
 function MapBoundsUpdater() {
   const map = useMap()
   const setBounds = useMapStore((s) => s.setBounds)
-
   useEffect(() => {
     const update = () => {
       const b = map.getBounds()
@@ -42,8 +41,25 @@ function MapBoundsUpdater() {
     update()
     return () => { map.off('moveend', update) }
   }, [map, setBounds])
-
   return null
+}
+
+function StaticMarker({ position, icon }: { position: [number, number]; icon: L.DivIcon }) {
+  const map = useMap()
+  const markerRef = useRef<L.Marker | null>(null)
+  useEffect(() => {
+    const marker = L.marker(position, { icon, interactive: false }).addTo(map)
+    markerRef.current = marker
+    return () => { map.removeLayer(marker) }
+  }, [map, position, icon])
+  return null
+}
+
+function getRouteColor(score: number): string {
+  if (score >= 0.8) return '#00E676'
+  if (score >= 0.6) return '#FFD600'
+  if (score >= 0.4) return '#FF8C00'
+  return '#FF1744'
 }
 
 interface SafetyMapProps {
@@ -64,14 +80,6 @@ export function SafetyMap({
   children,
 }: SafetyMapProps) {
   const { center, zoom, setSelectedLocation } = useMapStore()
-  const mapRef = useRef<L.Map | null>(null)
-
-  const getRouteColor = (score: number) => {
-    if (score >= 0.8) return '#00E676'
-    if (score >= 0.6) return '#FFD600'
-    if (score >= 0.4) return '#FF8C00'
-    return '#FF1744'
-  }
 
   return (
     <MapContainer
@@ -80,31 +88,28 @@ export function SafetyMap({
       className="h-full w-full"
       zoomControl={false}
       style={{ background: '#0a0a10' }}
-      ref={mapRef}
     >
       <TileLayer
         attribution='&copy; <a href="https://carto.com/">CARTO</a>'
         url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
       />
-
       <ScaleControl position="bottomleft" />
       <ZoomControl position="bottomright" />
       {children}
-
       <MapBoundsUpdater />
 
       {showHeatmap && heatmapPoints.length > 0 && (
         <HeatmapLayer
           points={heatmapPoints}
-          onHotspotClick={(lat, lng, weight) => {
+          onHotspotClick={(lat, lng, w) => {
             setSelectedLocation({ lat, lng })
-            onHotspotClick?.(lat, lng, weight)
+            onHotspotClick?.(lat, lng, w)
           }}
         />
       )}
 
       {userLocation && (
-        <Marker
+        <StaticMarker
           position={[userLocation.lat, userLocation.lng]}
           icon={userIcon}
         />
@@ -122,19 +127,4 @@ export function SafetyMap({
       )}
     </MapContainer>
   )
-}
-
-function Marker({ position, icon }: { position: [number, number]; icon: L.DivIcon }) {
-  const map = useMap()
-  const markerRef = useRef<L.Marker | null>(null)
-
-  useEffect(() => {
-    const marker = L.marker(position, { icon, interactive: false }).addTo(map)
-    markerRef.current = marker
-    return () => {
-      map.removeLayer(marker)
-    }
-  }, [map, position, icon])
-
-  return null
 }
