@@ -2,7 +2,7 @@ import * as React from 'react'
 import { Loader2 } from 'lucide-react'
 import { SafetyMap } from '@/components/map/SafetyMap'
 import { MapControls } from '@/components/map/MapControls'
-import { LocationInfoPanel } from '@/components/map/LocationInfoPanel'
+import { RiskIntelligencePanel } from '@/components/map/RiskIntelligencePanel'
 import { RoutePanel } from '@/components/map/RoutePanel'
 import { useMapStore } from '@/store/mapStore'
 import { useGeolocation } from '@/hooks/useGeolocation'
@@ -111,9 +111,9 @@ export function MapScreen() {
         <RoutePanel onClose={() => setShowRoutePanel(false)} />
       )}
 
-      {/* Location Info Panel (bottom sheet) */}
+      {/* Risk Intelligence Panel (bottom sheet) */}
       {selectedLocation && !showRoutePanel && (
-        <LocationInfoPanel
+        <RiskIntelligencePanel
           onGetSafeRoute={() => {
             setShowRoutePanel(true)
             setSelectedLocation(null)

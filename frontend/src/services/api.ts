@@ -21,6 +21,7 @@ import type {
   ServiceHealth,
   PipelineAgent,
   PipelineRunResult,
+  ExplainResponse,
 } from '@/types'
 
 const RAW = import.meta.env.VITE_API_URL || ''
@@ -473,6 +474,15 @@ export const riskApi = {
   getHeatmapPoints: async (bounds: MapBounds, zoom: number): Promise<HeatmapPoint[]> => {
     const resp = await riskApi.getHeatmapBounds(bounds, zoom)
     return resp.points
+  },
+
+  // Risk score explainability with source attribution
+  explainScore: async (lat: number, lng: number): Promise<ExplainResponse> => {
+    try {
+      const { data: raw } = await api.post('/risk/explain', { latitude: lat, longitude: lng, radius_km: 1.0 })
+      const inner = (raw.data || raw) as Record<string, unknown>
+      return inner as unknown as ExplainResponse
+    } catch (error) { handleError(error) }
   },
 }
 

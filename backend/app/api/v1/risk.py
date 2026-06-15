@@ -10,6 +10,7 @@ from app.dependencies import get_current_user
 from app.models.user import User
 from app.pipeline.risk import score_location
 from app.pipeline.heatmap import get_heatmap_data
+from app.pipeline.explain import explain_risk
 from app.schemas.risk import (
     RiskScoreRequest,
     RiskScoreResponse,
@@ -17,6 +18,8 @@ from app.schemas.risk import (
     HeatmapResponse,
     HeatmapPoint,
     DistrictSummary,
+    ExplainRequest,
+    ExplainResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -132,6 +135,18 @@ async def get_heatmap(
         generated_at=datetime.now(timezone.utc).isoformat(),
         district_summaries=summaries if summaries else None,
     )
+
+
+@router.post("/explain", response_model=ExplainResponse)
+async def explain_risk_score(
+    body: ExplainRequest,
+):
+    try:
+        result = await explain_risk(body.latitude, body.longitude, body.radius_km)
+        return ExplainResponse(**result)
+    except Exception as e:
+        logger.exception(f"[EXPLAIN] Failed for ({body.latitude}, {body.longitude}): {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Risk explain failed: {str(e)}")
 
 
 @router.get("/district/{district}")
