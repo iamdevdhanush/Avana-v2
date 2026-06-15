@@ -36,6 +36,21 @@ async def lifespan(app: FastAPI):
     await validate_schema()
     logger.info("Schema validation complete")
 
+    # Gemini startup diagnostic
+    try:
+        from app.services.gemini import gemini_service as gs
+        import google.generativeai as genai
+        sd = gs.get_status()
+        logger.info(
+            f"[GEMINI_DIAG] enabled={bool(settings.GEMINI_API_KEY)} "
+            f"key_present={bool(settings.GEMINI_API_KEY and len(settings.GEMINI_API_KEY) >= 10)} "
+            f"sdk=google-generativeai-{genai.__version__} "
+            f"auth_method=api_key (genai.configure) "
+            f"status={sd.get('status', 'unknown')}"
+        )
+    except Exception as diag_err:
+        logger.warning(f"[GEMINI_DIAG] diagnostic failed: {diag_err}")
+
     asyncio.create_task(_bootstrap_heatmap_data())
 
     yield
@@ -310,3 +325,63 @@ async def health_gemini():
             status_code=503,
             content={"status": "OFFLINE", "error": str(e)},
         )
+
+
+@app.get("/api/v1/debug/gemini")
+async def debug_gemini():
+    from app.services.gemini import gemini_service, GeminiQuotaExceeded, GeminiAuthError
+    import google.generativeai as genai
+
+    result = {
+        "status": "failure",
+        "diagnostics": {
+            "GEMINI_API_KEY_configured": bool(settings.GEMINI_API_KEY),
+            "GEMINI_API_KEY_length": len(settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else 0,
+            "GEMINI_API_KEY_prefix": (settings.GEMINI_API_KEY[:6] + "...") if settings.GEMINI_API_KEY and len(settings.GEMINI_API_KEY) >= 6 else "N/A",
+            "sdk": f"google-generativeai-{genai.__version__}",
+            "auth_method": "api_key (genai.configure)",
+            "service_status": gemini_service.get_status(),
+        },
+    }
+
+    if not settings.GEMINI_API_KEY:
+        result["error"] = "GEMINI_API_KEY not configured"
+        return JSONResponse(status_code=503, content=result)
+
+    if len(settings.GEMINI_API_KEY) < 10:
+        result["error"] = "GEMINI_API_KEY too short (< 10 chars)"
+        return JSONResponse(status_code=503, content=result)
+
+    import asyncio
+    loop = asyncio.get_event_loop()
+    try:
+        resp = await loop.run_in_executor(
+            None,
+            lambda: gemini_service.generate("Reply with OK"),
+        )
+        if resp and "OK" in resp:
+            result["status"] = "success"
+            result["response"] = resp
+            return result
+        result["error"] = f"Unexpected response: {resp}"
+        return JSONResponse(status_code=502, content=result)
+    except GeminiQuotaExceeded as e:
+        result["error"] = f"QUOTA_EXCEEDED: {e}"
+        return JSONResponse(status_code=429, content=result)
+    except GeminiAuthError as e:
+        result["error"] = f"AUTH_FAILED: {e}"
+        result["diagnostics"]["auth_error_detail"] = str(e)
+        return JSONResponse(status_code=401, content=result)
+    except Exception as e:
+        err_str = str(e)
+        if "ACCESS_TOKEN_TYPE_UNSUPPORTED" in err_str:
+            result["error"] = (
+                "AUTH_FAILED: ACCESS_TOKEN_TYPE_UNSUPPORTED — Gemini API received an OAuth token "
+                "instead of an API key. This means genai.configure(api_key=...) did not apply. "
+                "Check that GEMINI_API_KEY env var is set correctly in Render dashboard "
+                "(no quotes, no whitespace)."
+            )
+            result["diagnostics"]["auth_error_detail"] = err_str
+            return JSONResponse(status_code=401, content=result)
+        result["error"] = str(e)
+        return JSONResponse(status_code=503, content=result)

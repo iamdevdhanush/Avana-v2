@@ -147,6 +147,16 @@ class GeminiService:
                     logger.error(self._init_error)
                     raise GeminiAuthError(self._init_error) from e
 
+                if "ACCESS_TOKEN_TYPE_UNSUPPORTED" in err_str:
+                    self._available = False
+                    self._init_error = (
+                        "Gemini received OAuth token instead of API key — "
+                        "GEMINI_API_KEY env var may be missing or incorrectly formatted "
+                        "(no quotes, no whitespace)"
+                    )
+                    logger.error(self._init_error)
+                    raise GeminiAuthError(self._init_error) from e
+
                 if "quota" in err_str.lower() or "resource_exhausted" in err_str.lower():
                     logger.error(f"Gemini quota exhausted: {e}")
                     self._quota_until = time.time() + QUOTA_COOLDOWN_MINUTES * 60
