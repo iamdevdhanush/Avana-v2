@@ -1,0 +1,16 @@
+District,City,Crime Type,Crime Count,Year,Month,Latitude,Longitude
+Bengaluru Urban,Bengaluru,Theft,450,2024,1,12.9716,77.5946
+Bengaluru Urban,Bengaluru,Burglary,120,2024,1,12.9716,77.5946
+Mysuru,Mysuru,Theft,85,2024,1,12.2958,76.6394
+Mysuru,Mysuru,Robbery,25,2024,1,12.2958,76.6394
+Belagavi,Belagavi,Murder,5,2024,1,15.8497,74.4977
+Belagavi,Belagavi,Assault,45,2024,1,15.8497,74.4977
+Dakshina Kannada,Mangaluru,Theft,200,2024,1,12.9141,74.8560
+Dakshina Kannada,Mangaluru,Domestic Violence,60,2024,1,12.9141,74.8560
+Kalaburagi,Gulbarga,Riot,30,2024,1,17.3297,76.8343
+Ballari,Bellary,Burglary,95,2024,1,15.1394,76.9214
+Shivamogga,Shimoga,Traffic Accident,350,2024,1,13.9299,75.5681
+Udupi,Udupi,Harassment,15,2024,1,13.3409,74.7421
+Hassan,Hassan,Theft,55,2024,1,13.0055,76.0913
+Davangere,Davangere,Kidnapping,8,2024,1,14.4667,75.9833
+Tumakuru,Tumkur,Vandalism,22,2024,1,13.3379,77.1173
