@@ -23,6 +23,39 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/risk", tags=["Risk Assessment"])
 
 
+def _score_to_heat_attrs(score: float) -> tuple:
+    normalized = max(0.0, min(1.0, score / 100.0))
+    if normalized >= 0.75:
+        t = (normalized - 0.75) / 0.25
+        intensity = round(0.8 + t * 0.2, 2)
+        radius = min(40 + int(t * 20), 60)
+    elif normalized >= 0.5:
+        t = (normalized - 0.5) / 0.25
+        intensity = round(0.6 + t * 0.2, 2)
+        radius = 30 + int(t * 10)
+    elif normalized >= 0.25:
+        t = (normalized - 0.25) / 0.25
+        intensity = round(0.4 + t * 0.2, 2)
+        radius = 20 + int(t * 10)
+    else:
+        t = normalized / 0.25
+        intensity = round(0.2 + t * 0.2, 2)
+        radius = 10 + int(t * 10)
+    return intensity, radius
+
+
+def _make_heatmap_point(lat: float, lng: float, score: float, category: str) -> HeatmapPoint:
+    intensity, radius = _score_to_heat_attrs(score)
+    return HeatmapPoint(
+        latitude=lat,
+        longitude=lng,
+        weight=score,
+        risk_category=category,
+        intensity=intensity,
+        radius=radius,
+    )
+
+
 @router.post("/score", response_model=RiskScoreResponse)
 async def calculate_risk_score(
     body: RiskScoreRequest,
@@ -57,12 +90,7 @@ async def get_heatmap(
     logger.info(f"[HEATMAP] API endpoint: {len(points_data)} points returned from get_heatmap_data")
 
     points = [
-        HeatmapPoint(
-            latitude=p.get("latitude", 0),
-            longitude=p.get("longitude", 0),
-            weight=p.get("score", 50.0),
-            risk_category=p.get("category", "Moderate"),
-        )
+        _make_heatmap_point(p.get("latitude", 0), p.get("longitude", 0), p.get("score", 50.0), p.get("category", "Moderate"))
         for p in points_data
     ]
     logger.info("[HEATMAP_DEBUG] Returning %s points", len(points))

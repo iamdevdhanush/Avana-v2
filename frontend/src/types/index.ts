@@ -223,6 +223,8 @@ export interface HeatmapPoint {
   lng: number
   weight: number
   riskCategory?: string
+  intensity?: number
+  radius?: number
 }
 
 export interface DistrictSummary {

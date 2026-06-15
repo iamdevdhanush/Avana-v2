@@ -4,119 +4,116 @@ import L from 'leaflet'
 import 'leaflet.heat'
 import type { HeatmapPoint } from '@/types'
 
-interface HeatmapLayerProps {
-  points: HeatmapPoint[]
-  radius?: number
-  blur?: number
-  maxZoom?: number
-  max?: number
-  gradient?: Record<number, string>
-  debug?: boolean
+const HEAT_GRADIENT: Record<number, string> = {
+  0.0: 'rgba(0,0,0,0)',
+  0.2: '#00E676',
+  0.4: '#FFD600',
+  0.6: '#FF8C00',
+  0.8: '#FF1744',
+  1.0: '#D50000',
 }
 
-export function HeatmapLayer({
-  points,
-  radius = 25,
-  blur = 15,
-  maxZoom = 18,
-  max = 1,
-  gradient = {
-    0.4: '#22c55e',
-    0.6: '#f59e0b',
-    0.8: '#ef4444',
-    1.0: '#7c3aed',
-  },
-  debug = false,
-}: HeatmapLayerProps) {
+function getRiskColor(weight: number): string {
+  if (weight >= 0.9) return '#D50000'
+  if (weight >= 0.75) return '#FF1744'
+  if (weight >= 0.5) return '#FF8C00'
+  if (weight >= 0.25) return '#FFD600'
+  return '#00E676'
+}
+
+interface HeatmapLayerProps {
+  points: HeatmapPoint[]
+  onHotspotClick?: (lat: number, lng: number, weight: number) => void
+}
+
+export function HeatmapLayer({ points, onHotspotClick }: HeatmapLayerProps) {
   const map = useMap()
   const heatLayerRef = useRef<L.HeatLayer | null>(null)
-  const markerLayerRef = useRef<L.LayerGroup | null>(null)
-
-  console.log("[HEATMAP_DEBUG]", points.length, points.slice(0, 5))
-  console.log(`[HEATMAP] points=${points.length}, weights=[${points.slice(0, 3).map(p => p.weight.toFixed(4)).join(', ')}...], max=${max}, radius=${radius}, blur=${blur}`)
-  if (points.length > 0) {
-    const ws = points.map(p => p.weight)
-    console.log(`[HEATMAP] weight range: ${Math.min(...ws).toFixed(4)} - ${Math.max(...ws).toFixed(4)}, avg=${(ws.reduce((a, b) => a + b, 0) / ws.length).toFixed(4)}`)
-  }
+  const clickHandlerRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
+    if (heatLayerRef.current) {
+      map.removeLayer(heatLayerRef.current)
+      heatLayerRef.current = null
+    }
+
     if (points.length === 0) return
 
     const heatData: Array<[number, number, number]> = points.map(
       (p) => [p.lat, p.lng, p.weight]
     )
 
-    console.log("[HEATMAP_RENDER]", heatData.length)
+    if (typeof L.heatLayer !== 'function') return
 
-    try {
-      if (heatLayerRef.current) {
-        console.log(`[HEATMAP] Updating existing layer with ${points.length} points`)
-        heatLayerRef.current.setLatLngs(heatData as unknown as L.LatLng[])
-      } else {
-        if (typeof L.heatLayer !== 'function') {
-          console.error("[HEATMAP] L.heatLayer is not a function — leaflet.heat may not be loaded")
-          return
-        }
-        console.log(`[HEATMAP] Creating new L.heatLayer with ${points.length} points`)
-        heatLayerRef.current = L.heatLayer(heatData as unknown as L.LatLng[], {
-          radius,
-          blur,
-          maxZoom,
-          max,
-          gradient,
-        }).addTo(map)
-        console.log(`[HEATMAP] Layer added to map`)
-      }
-    } catch (err) {
-      console.error("[HEATMAP] Failed to create/update heat layer:", err)
-    }
+    const radius = map.getZoom() >= 13 ? 25 : map.getZoom() >= 11 ? 35 : 45
+
+    heatLayerRef.current = L.heatLayer(heatData as unknown as L.LatLng[], {
+      radius,
+      blur: radius * 0.65,
+      maxZoom: 18,
+      max: 1,
+      gradient: HEAT_GRADIENT,
+    }).addTo(map)
 
     return () => {
       if (heatLayerRef.current) {
-        console.log(`[HEATMAP] Removing layer from map (${points.length} points were shown)`)
         map.removeLayer(heatLayerRef.current)
         heatLayerRef.current = null
       }
     }
-  }, [points, radius, blur, maxZoom, max, gradient, map])
+  }, [points, map])
 
   useEffect(() => {
-    if (!debug) {
-      if (markerLayerRef.current) {
-        map.removeLayer(markerLayerRef.current)
-        markerLayerRef.current = null
+    if (clickHandlerRef.current) {
+      clickHandlerRef.current()
+      clickHandlerRef.current = null
+    }
+
+    if (!onHotspotClick || points.length === 0) return
+
+    const handler = (e: L.LeafletMouseEvent) => {
+      const clickPt = map.latLngToContainerPoint(e.latlng)
+      const threshold = 60 + 40 * (1 / Math.max(1, map.getZoom() - 8))
+      let nearest: { lat: number; lng: number; weight: number; dist: number } | null = null
+
+      const step = Math.max(1, Math.floor(points.length / 200))
+      for (let i = 0; i < points.length; i += step) {
+        const p = points[i]
+        const pt = map.latLngToContainerPoint([p.lat, p.lng])
+        const dx = clickPt.x - pt.x
+        const dy = clickPt.y - pt.y
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist < threshold && (!nearest || dist < nearest.dist)) {
+          nearest = { lat: p.lat, lng: p.lng, weight: p.weight, dist }
+        }
       }
-      return
-    }
-    if (points.length === 0) return
 
-    if (markerLayerRef.current) {
-      map.removeLayer(markerLayerRef.current)
+      if (nearest) {
+        onHotspotClick(nearest.lat, nearest.lng, nearest.weight)
+      }
     }
 
-    const group = L.layerGroup()
-    const subset = points.length > 500 ? points.filter((_, i) => i % Math.ceil(points.length / 500) === 0) : points
-    subset.forEach((p) => {
-      const color = p.weight > 0.6 ? '#ef4444' : p.weight > 0.3 ? '#f59e0b' : '#22c55e'
-      L.circleMarker([p.lat, p.lng], {
-        radius: 4,
-        color,
-        fillColor: color,
-        fillOpacity: 0.8,
-        weight: 1,
-      }).addTo(group)
-    })
-    group.addTo(map)
-    markerLayerRef.current = group
-    console.log(`[HEATMAP_MARKERS] Added ${subset.length} debug markers`)
+    map.on('click', handler)
+    clickHandlerRef.current = () => map.off('click', handler)
 
     return () => {
-      if (markerLayerRef.current) {
-        map.removeLayer(markerLayerRef.current)
-        markerLayerRef.current = null
+      if (clickHandlerRef.current) {
+        clickHandlerRef.current()
+        clickHandlerRef.current = null
       }
     }
-  }, [debug, points, map])
+  }, [points, map, onHotspotClick])
+
+  useEffect(() => {
+    if (!document.getElementById('heatmap-glow-style')) {
+      const style = document.createElement('style')
+      style.id = 'heatmap-glow-style'
+      style.textContent = `
+        .leaflet-heatmap-layer { mix-blend-mode: screen; }
+      `
+      document.head.appendChild(style)
+    }
+  }, [])
 
   return null
 }

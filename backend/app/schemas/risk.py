@@ -39,6 +39,8 @@ class HeatmapPoint(BaseModel):
     longitude: float
     weight: float
     risk_category: str
+    intensity: float = 0.0
+    radius: int = 20
 
 
 class DistrictSummary(BaseModel):

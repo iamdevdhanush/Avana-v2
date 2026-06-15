@@ -418,10 +418,18 @@ export const riskApi = {
       const { data: raw } = await api.post('/risk/score', { latitude: lat, longitude: lng })
       const inner = (raw.data || raw) as Record<string, unknown>
       const score01 = Number(inner.score || 0) / 100
+      const rawFactors = (inner.factors || {}) as Record<string, unknown>
       return {
         score: score01,
         category: mapCategory(String(inner.category || 'moderate')),
-        factors: [],
+        factors: [
+          { name: 'historical_risk', weight: 0.4, value: Number(rawFactors.historical_risk || 0), description: 'Historical crime density and severity' },
+          { name: 'recent_reports_impact', weight: 0.2, value: Number(rawFactors.recent_impact || 0), description: 'Recent 7-day incident activity' },
+          { name: 'night_factor', weight: 0.15, value: Number(rawFactors.night_penalty || 0), description: 'Current time risk adjustment' },
+          { name: 'severity_penalty', weight: 0.15, value: Number(rawFactors.severity_penalty || 0), description: 'Severity of recent incidents' },
+          { name: 'police_presence_bonus', weight: 0.1, value: Number(rawFactors.police_presence_bonus || 0), description: 'Nearby police stations' },
+          { name: 'hospital_access_bonus', weight: 0.1, value: Number(rawFactors.hospital_access_bonus || 0), description: 'Nearby hospitals' },
+        ],
         location: { lat, lng },
         timestamp: new Date().toISOString(),
         recommendations: (inner.recommendations || []) as string[],
@@ -446,6 +454,8 @@ export const riskApi = {
           lng: Number(p.longitude || 0),
           weight: Number(p.weight || 0) / 100,
           riskCategory: p.risk_category ? String(p.risk_category) : undefined,
+          intensity: p.intensity !== undefined ? Number(p.intensity) : undefined,
+          radius: p.radius !== undefined ? Number(p.radius) : undefined,
         })),
         generatedAt: inner.generated_at ? String(inner.generated_at) : null,
         districtSummaries: summaries.map((s) => ({
