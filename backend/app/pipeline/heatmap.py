@@ -283,6 +283,7 @@ async def generate_heatmap_for_bounds(
 async def get_heatmap_data(
     sw_lat: float, sw_lng: float,
     ne_lat: float, ne_lng: float,
+    min_score: float = 0,
 ) -> List[dict]:
     factory = get_session_factory()
     async with factory() as session:
@@ -298,10 +299,12 @@ async def get_heatmap_data(
                 WHERE latitude BETWEEN :sw_lat AND :ne_lat
                   AND longitude BETWEEN :sw_lng AND :ne_lng
                   AND calculated_at >= NOW() - INTERVAL '48 hours'
+                  AND score >= :min_score
                 ORDER BY latitude, longitude, calculated_at DESC
             """),
             {"sw_lat": sw_lat, "ne_lat": ne_lat,
-             "sw_lng": sw_lng, "ne_lng": ne_lng},
+             "sw_lng": sw_lng, "ne_lng": ne_lng,
+             "min_score": min_score},
         )
         rows = result.fetchall()
         logger.info(f"[HEATMAP] points returned: {len(rows)} (bounds: {sw_lat:.4f}-{ne_lat:.4f}, {sw_lng:.4f}-{ne_lng:.4f})")
@@ -333,10 +336,12 @@ async def get_heatmap_data(
                     FROM risk_scores
                     WHERE latitude BETWEEN :sw_lat AND :ne_lat
                       AND longitude BETWEEN :sw_lng AND :ne_lng
+                      AND score >= :min_score
                     ORDER BY latitude, longitude, calculated_at DESC
                 """),
                 {"sw_lat": sw_lat, "ne_lat": ne_lat,
-                 "sw_lng": sw_lng, "ne_lng": ne_lng},
+                 "sw_lng": sw_lng, "ne_lng": ne_lng,
+                 "min_score": min_score},
             )
             rows = result.fetchall()
             logger.info(f"[HEATMAP] points returned after removing time filter: {len(rows)}")

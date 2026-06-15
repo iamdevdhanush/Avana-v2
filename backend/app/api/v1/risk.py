@@ -83,6 +83,7 @@ async def get_heatmap(
         points_data = await get_heatmap_data(
             body.sw_lat, body.sw_lng,
             body.ne_lat, body.ne_lng,
+            min_score=body.min_score,
         )
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Heatmap query failed: {str(e)}")

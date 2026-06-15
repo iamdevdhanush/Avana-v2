@@ -1,32 +1,28 @@
-import { useEffect, useRef } from 'react'
+import { useRef, useMemo, useEffect } from 'react'
 import { useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet.heat'
 import type { HeatmapPoint } from '@/types'
 
+const MIN_SCORE = 0.25
+
 const HEAT_GRADIENT: Record<number, string> = {
   0.0: 'rgba(0,0,0,0)',
-  0.25: '#00E676',
-  0.50: '#FFD600',
-  0.75: '#FF8C00',
-  0.90: '#FF1744',
-  1.0: '#D50000',
+  0.10: 'rgba(255,214,0,0.10)',
+  0.33: 'rgba(255,214,0,0.45)',
+  0.50: 'rgba(255,140,0,0.65)',
+  0.67: 'rgba(255,23,68,0.85)',
+  0.85: '#D50000',
+  1.0: '#B71C1C',
 }
 
-function nonlinearWeight(score01: number): number {
-  if (score01 <= 0) return 0
-  if (score01 <= 0.25) return score01 * 0.16
-  if (score01 <= 0.5) return 0.04 + (score01 - 0.25) * 0.64
-  if (score01 <= 0.75) return 0.20 + (score01 - 0.5) * 2.4
-  if (score01 <= 0.9) return 0.80 + (score01 - 0.75) * 0.67
-  return 0.90 + (score01 - 0.9) * 1.0
+function remapWeight(raw01: number): number {
+  if (raw01 <= MIN_SCORE) return 0
+  return Math.min(1, (raw01 - MIN_SCORE) / (1 - MIN_SCORE))
 }
 
-function getRadius(zoom: number): number {
-  if (zoom >= 15) return 20
-  if (zoom >= 13) return 28
-  if (zoom >= 11) return 38
-  return 50
+function thresholdPx(zoom: number): number {
+  return 50 + 50 * (1 / Math.max(1, zoom - 8))
 }
 
 interface HeatmapLayerProps {
@@ -36,102 +32,89 @@ interface HeatmapLayerProps {
 
 export function HeatmapLayer({ points, onHotspotClick }: HeatmapLayerProps) {
   const map = useMap()
-  const heatLayerRef = useRef<L.HeatLayer | null>(null)
-  const clickHandlerRef = useRef<(() => void) | null>(null)
+  const heatRef = useRef<L.HeatLayer | null>(null)
+  const clickClean = useRef<(() => void) | null>(null)
+
+  const filtered = useMemo(
+    () => points.filter((p) => p.weight >= MIN_SCORE),
+    [points]
+  )
+
+  const heatData = useMemo<Array<[number, number, number]>>(
+    () => filtered.map((p) => [p.lat, p.lng, remapWeight(p.weight)]),
+    [filtered]
+  )
 
   useEffect(() => {
-    if (heatLayerRef.current) {
-      map.removeLayer(heatLayerRef.current)
-      heatLayerRef.current = null
+    if (heatRef.current) {
+      map.removeLayer(heatRef.current)
+      heatRef.current = null
     }
+    if (heatData.length === 0 || typeof L.heatLayer !== 'function') return
 
-    if (points.length === 0) return
-
-    const zoom = map.getZoom()
-    const radius = getRadius(zoom)
-
-    const heatData: Array<[number, number, number]> = points.map((p) => {
-      const rawWeight = Math.min(1, Math.max(0, p.weight))
-      const w = nonlinearWeight(rawWeight)
-      return [p.lat, p.lng, w]
-    })
-
-    if (typeof L.heatLayer !== 'function') {
-      return
-    }
-
-    heatLayerRef.current = L.heatLayer(heatData as unknown as L.LatLng[], {
-      radius,
-      blur: Math.round(radius * 0.7),
+    heatRef.current = L.heatLayer(heatData as unknown as L.LatLng[], {
+      radius: 35,
+      blur: 24,
       maxZoom: 16,
       max: 1,
       gradient: HEAT_GRADIENT,
     }).addTo(map)
 
     return () => {
-      if (heatLayerRef.current) {
-        map.removeLayer(heatLayerRef.current)
-        heatLayerRef.current = null
+      if (heatRef.current) {
+        map.removeLayer(heatRef.current)
+        heatRef.current = null
       }
     }
-  }, [points, map])
+  }, [heatData, map])
 
   useEffect(() => {
-    if (clickHandlerRef.current) {
-      clickHandlerRef.current()
-      clickHandlerRef.current = null
+    if (clickClean.current) {
+      clickClean.current()
+      clickClean.current = null
     }
-
-    if (!onHotspotClick || points.length === 0) return
+    if (!onHotspotClick || filtered.length === 0) return
 
     const handler = (e: L.LeafletMouseEvent) => {
-      const clickPt = map.latLngToContainerPoint(e.latlng)
-      const threshold = 50 + 50 * (1 / Math.max(1, map.getZoom() - 8))
-      let nearest: { lat: number; lng: number; weight: number; dist: number } | null = null
+      const cp = map.latLngToContainerPoint(e.latlng)
+      const th = thresholdPx(map.getZoom())
+      let best: { lat: number; lng: number; weight: number; dist: number } | null = null
 
-      const step = Math.max(1, Math.floor(points.length / 150))
-      for (let i = 0; i < points.length; i += step) {
-        const p = points[i]
+      const step = Math.max(1, Math.floor(filtered.length / 150))
+      for (let i = 0; i < filtered.length; i += step) {
+        const p = filtered[i]
         const pt = map.latLngToContainerPoint([p.lat, p.lng])
-        const dx = clickPt.x - pt.x
-        const dy = clickPt.y - pt.y
-        const dist = Math.sqrt(dx * dx + dy * dy)
-        if (dist < threshold && (!nearest || dist < nearest.dist)) {
-          nearest = { lat: p.lat, lng: p.lng, weight: p.weight, dist }
+        const dx = cp.x - pt.x
+        const dy = cp.y - pt.y
+        const d = Math.sqrt(dx * dx + dy * dy)
+        if (d < th && (!best || d < best.dist)) {
+          best = { lat: p.lat, lng: p.lng, weight: p.weight, dist: d }
         }
       }
 
-      if (nearest) {
-        onHotspotClick(nearest.lat, nearest.lng, nearest.weight)
-      }
+      if (best) onHotspotClick(best.lat, best.lng, best.weight)
     }
 
     map.on('click', handler)
-    clickHandlerRef.current = () => map.off('click', handler)
+    clickClean.current = () => map.off('click', handler)
 
     return () => {
-      if (clickHandlerRef.current) {
-        clickHandlerRef.current()
-        clickHandlerRef.current = null
+      if (clickClean.current) {
+        clickClean.current()
+        clickClean.current = null
       }
     }
-  }, [points, map, onHotspotClick])
+  }, [filtered, onHotspotClick, map])
 
   useEffect(() => {
-    if (!document.getElementById('heatmap-glow-style')) {
-      const style = document.createElement('style')
-      style.id = 'heatmap-glow-style'
-      style.textContent = `
-        .leaflet-heatmap-layer {
-          mix-blend-mode: screen;
-          will-change: transform;
-        }
-        .leaflet-heatmap-layer canvas {
-          image-rendering: auto;
-        }
-      `
-      document.head.appendChild(style)
-    }
+    if (document.getElementById('hm-style')) return
+    const s = document.createElement('style')
+    s.id = 'hm-style'
+    s.textContent = `
+      .leaflet-heatmap-layer { mix-blend-mode: screen; will-change: transform; }
+      .leaflet-heatmap-layer canvas { image-rendering: auto; }
+    `
+    document.head.appendChild(s)
   }, [])
 
   return null

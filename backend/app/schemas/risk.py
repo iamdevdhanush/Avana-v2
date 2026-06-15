@@ -32,6 +32,7 @@ class HeatmapRequest(BaseModel):
     ne_lat: float
     ne_lng: float
     zoom: int = 10
+    min_score: float = 0
 
 
 class HeatmapPoint(BaseModel):
