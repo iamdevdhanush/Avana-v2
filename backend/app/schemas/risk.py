@@ -66,65 +66,22 @@ class ExplainRequest(BaseModel):
     radius_km: float = 1.0
 
 
-class SourceBreakdown(BaseModel):
-    police_crime_data: int = 0
-    verified_incidents: int = 0
-    community_reports: int = 0
-    news_intelligence: int = 0
-
-
-class NewsMetadata(BaseModel):
-    title: str
-    publisher: str
-    published_at: str
-    url: str
-
-
-class PoliceMetadata(BaseModel):
-    dataset_name: str
-    reporting_year: int
-    district: str
-    crime_category: str
-
-
-class ContributingIncidentItem(BaseModel):
-    id: str
+class ExplainSourceItem(BaseModel):
+    title: Optional[str] = None
     incident_type: str
     severity: str
     date: str
-    distance_km: float
     source: str
-    title: Optional[str] = None
-    description: Optional[str] = None
     source_url: Optional[str] = None
-    news_metadata: Optional[NewsMetadata] = None
-    police_metadata: Optional[PoliceMetadata] = None
-
-
-class SourceItem(BaseModel):
-    name: str
-    detail: str
-    count: int = 1
-
-
-class SourceAttribution(BaseModel):
-    type: str
-    label: str
-    count: int
-    items: List[SourceItem] = []
-
-
-class ConfidenceInfo(BaseModel):
-    score: float
-    based_on: List[str]
+    distance_meters: float = 0.0
+    publisher: Optional[str] = None
+    dataset_name: Optional[str] = None
+    dataset_year: Optional[int] = None
+    dataset_district: Optional[str] = None
 
 
 class ExplainResponse(BaseModel):
-    score: float
-    level: str
-    trend: str
-    last_updated: str
-    why_score: SourceBreakdown
-    contributing_incidents: List[ContributingIncidentItem]
-    sources: List[SourceAttribution]
-    confidence: ConfidenceInfo
+    risk_score: float
+    risk_category: str
+    incident_count: int
+    sources: List[ExplainSourceItem] = []

@@ -481,7 +481,24 @@ export const riskApi = {
     try {
       const { data: raw } = await api.post('/risk/explain', { latitude: lat, longitude: lng, radius_km: 1.0 })
       const inner = (raw.data || raw) as Record<string, unknown>
-      return inner as unknown as ExplainResponse
+      return {
+        risk_score: Number(inner.risk_score ?? 50),
+        risk_category: String(inner.risk_category ?? 'Moderate'),
+        incident_count: Number(inner.incident_count ?? 0),
+        sources: ((inner.sources || []) as Record<string, unknown>[]).map((s) => ({
+          title: s.title ? String(s.title) : undefined,
+          incident_type: String(s.incident_type || 'OTHER'),
+          severity: String(s.severity || 'MEDIUM'),
+          date: String(s.date || new Date().toISOString()),
+          source: String(s.source || 'UNKNOWN'),
+          source_url: s.source_url && typeof s.source_url === 'string' && /^https?:\/\//i.test(s.source_url) ? String(s.source_url) : undefined,
+          distance_meters: Number(s.distance_meters ?? 0),
+          publisher: s.publisher ? String(s.publisher) : undefined,
+          dataset_name: s.dataset_name ? String(s.dataset_name) : undefined,
+          dataset_year: s.dataset_year !== undefined && s.dataset_year !== null ? Number(s.dataset_year) : undefined,
+          dataset_district: s.dataset_district ? String(s.dataset_district) : undefined,
+        })),
+      }
     } catch (error) { handleError(error) }
   },
 }

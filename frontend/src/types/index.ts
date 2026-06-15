@@ -397,66 +397,23 @@ export interface LastIntelligenceRun {
 
 // ── Risk Explainability ──────────────────────────────────────────────────────
 
-export interface SourceBreakdown {
-  police_crime_data: number
-  verified_incidents: number
-  community_reports: number
-  news_intelligence: number
-}
-
-export interface NewsMetadata {
-  title: string
-  publisher: string
-  published_at: string
-  url: string
-}
-
-export interface PoliceMetadata {
-  dataset_name: string
-  reporting_year: number
-  district: string
-  crime_category: string
-}
-
-export interface ContributingIncident {
-  id: string
+export interface ExplainSourceItem {
+  title?: string
   incident_type: string
   severity: string
   date: string
-  distance_km: number
   source: string
-  title?: string
-  description?: string
   source_url?: string
-  news_metadata?: NewsMetadata
-  police_metadata?: PoliceMetadata
-}
-
-export interface SourceItem {
-  name: string
-  detail: string
-  count: number
-}
-
-export interface SourceAttribution {
-  type: string
-  label: string
-  count: number
-  items: SourceItem[]
-}
-
-export interface ConfidenceInfo {
-  score: number
-  based_on: string[]
+  distance_meters: number
+  publisher?: string
+  dataset_name?: string
+  dataset_year?: number
+  dataset_district?: string
 }
 
 export interface ExplainResponse {
-  score: number
-  level: string
-  trend: string
-  last_updated: string
-  why_score: SourceBreakdown
-  contributing_incidents: ContributingIncident[]
-  sources: SourceAttribution[]
-  confidence: ConfidenceInfo
+  risk_score: number
+  risk_category: string
+  incident_count: number
+  sources: ExplainSourceItem[]
 }

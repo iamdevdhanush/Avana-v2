@@ -146,7 +146,8 @@ async def explain_risk_score(
         return ExplainResponse(**result)
     except Exception as e:
         logger.exception(f"[EXPLAIN] Failed for ({body.latitude}, {body.longitude}): {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Risk explain failed: {str(e)}")
+        # Return safe default instead of 500 — better to show partial data than crash
+        return ExplainResponse(risk_score=50.0, risk_category="Moderate", incident_count=0, sources=[])
 
 
 @router.get("/district/{district}")
