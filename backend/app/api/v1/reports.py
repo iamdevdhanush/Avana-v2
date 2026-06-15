@@ -38,8 +38,9 @@ async def submit_report(
     if not (-90 <= body.latitude <= 90) or not (-180 <= body.longitude <= 180):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid coordinates")
     try:
-        inc_type = IncidentType(body.incident_type)
-        sev = Severity(body.severity)
+        # Normalize to uppercase — DB enum stores UPPERCASE labels
+        inc_type = IncidentType(body.incident_type.upper())
+        sev = Severity(body.severity.upper())
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid value: {e}")
 

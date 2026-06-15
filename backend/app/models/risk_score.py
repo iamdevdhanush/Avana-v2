@@ -9,10 +9,11 @@ import enum
 
 
 class RiskCategory(str, enum.Enum):
-    SAFE = "safe"
-    MODERATE = "moderate"
-    HIGH_RISK = "high_risk"
-    CRITICAL = "critical"
+    # Values MUST match DB enum 'riskcategory' labels exactly (UPPERCASE)
+    SAFE = "SAFE"
+    MODERATE = "MODERATE"
+    HIGH_RISK = "HIGH_RISK"
+    CRITICAL = "CRITICAL"
 
 
 class RiskScore(Base):
@@ -26,7 +27,9 @@ class RiskScore(Base):
     longitude: Mapped[float] = mapped_column(Float, nullable=False)
     geom = mapped_column(Geometry("POINT", srid=4326), nullable=True)
     score: Mapped[float] = mapped_column(Float, nullable=False)
-    category: Mapped[RiskCategory] = mapped_column(SAEnum(RiskCategory), nullable=False)
+    category: Mapped[RiskCategory] = mapped_column(
+        SAEnum(RiskCategory, name="riskcategory", create_type=False), nullable=False
+    )
     district: Mapped[str] = mapped_column(String(100), nullable=True)
     city: Mapped[str] = mapped_column(String(100), nullable=True)
     taluk: Mapped[str] = mapped_column(String(100), nullable=True)

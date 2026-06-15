@@ -9,34 +9,37 @@ import enum
 
 
 class IncidentType(str, enum.Enum):
-    THEFT = "theft"
-    ASSAULT = "assault"
-    HARASSMENT = "harassment"
-    ROBBERY = "robbery"
-    STALKING = "stalking"
-    DOMESTIC_VIOLENCE = "domestic_violence"
-    TRAFFIC_ACCIDENT = "traffic_accident"
-    PICKPOCKETING = "pickpocketing"
-    BURGLARY = "burglary"
-    MURDER = "murder"
-    KIDNAPPING = "kidnapping"
-    RIOT = "riot"
-    VANDALISM = "vandalism"
-    SUSPICIOUS_ACTIVITY = "suspicious_activity"
-    OTHER = "other"
+    # Values MUST match DB enum 'incidenttype' labels exactly (UPPERCASE)
+    THEFT = "THEFT"
+    ASSAULT = "ASSAULT"
+    HARASSMENT = "HARASSMENT"
+    ROBBERY = "ROBBERY"
+    STALKING = "STALKING"
+    DOMESTIC_VIOLENCE = "DOMESTIC_VIOLENCE"
+    TRAFFIC_ACCIDENT = "TRAFFIC_ACCIDENT"
+    PICKPOCKETING = "PICKPOCKETING"
+    BURGLARY = "BURGLARY"
+    MURDER = "MURDER"
+    KIDNAPPING = "KIDNAPPING"
+    RIOT = "RIOT"
+    VANDALISM = "VANDALISM"
+    SUSPICIOUS_ACTIVITY = "SUSPICIOUS_ACTIVITY"
+    OTHER = "OTHER"
 
 
 class Severity(str, enum.Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
+    # Values MUST match DB enum 'severity' labels exactly (UPPERCASE)
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
 
 
 class ReportStatus(str, enum.Enum):
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
+    # Values MUST match DB enum 'reportstatus' labels exactly (UPPERCASE)
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
 
 
 class SafetyReport(Base):
@@ -49,8 +52,13 @@ class SafetyReport(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    incident_type: Mapped[IncidentType] = mapped_column(SAEnum(IncidentType), nullable=False)
-    severity: Mapped[Severity] = mapped_column(SAEnum(Severity), nullable=False)
+    # create_type=False: use the existing DB enum instead of recreating it
+    incident_type: Mapped[IncidentType] = mapped_column(
+        SAEnum(IncidentType, name="incidenttype", create_type=False), nullable=False
+    )
+    severity: Mapped[Severity] = mapped_column(
+        SAEnum(Severity, name="severity", create_type=False), nullable=False
+    )
     latitude: Mapped[float] = mapped_column(Float, nullable=False)
     longitude: Mapped[float] = mapped_column(Float, nullable=False)
     geom = mapped_column(Geometry("POINT", srid=4326), nullable=True)
@@ -58,10 +66,15 @@ class SafetyReport(Base):
     address: Mapped[str] = mapped_column(String(500), nullable=True)
     district: Mapped[str] = mapped_column(String(100), nullable=True)
     city: Mapped[str] = mapped_column(String(100), nullable=True)
-    status: Mapped[ReportStatus] = mapped_column(SAEnum(ReportStatus), default=ReportStatus.PENDING)
+    status: Mapped[ReportStatus] = mapped_column(
+        SAEnum(ReportStatus, name="reportstatus", create_type=False), default=ReportStatus.PENDING
+    )
     confidence_score: Mapped[float] = mapped_column(Float, default=0.0)
     is_anonymous: Mapped[bool] = mapped_column(Boolean, default=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Added by migration 004 — marks community reports that are duplicates of existing incidents
+    is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False)
+    duplicate_of: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
     moderated_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
     moderation_notes: Mapped[str] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

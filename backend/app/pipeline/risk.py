@@ -200,6 +200,11 @@ async def recalculate_all_risk_scores() -> dict:
                                 :lat, :lng, :score, :cat,
                                 '{}'::jsonb, NOW(), NOW()
                             )
+                            ON CONFLICT (latitude, longitude)
+                            DO UPDATE SET
+                                score = EXCLUDED.score,
+                                category = EXCLUDED.category,
+                                calculated_at = NOW()
                         """),
                         {"lat": lat, "lng": lng, "score": result["score"], "cat": result["category"]},
                     )

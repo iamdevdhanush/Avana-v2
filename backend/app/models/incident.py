@@ -9,45 +9,49 @@ import enum
 
 
 class IncidentType(str, enum.Enum):
-    THEFT = "theft"
-    ASSAULT = "assault"
-    HARASSMENT = "harassment"
-    ROBBERY = "robbery"
-    STALKING = "stalking"
-    DOMESTIC_VIOLENCE = "domestic_violence"
-    TRAFFIC_ACCIDENT = "traffic_accident"
-    PICKPOCKETING = "pickpocketing"
-    BURGLARY = "burglary"
-    MURDER = "murder"
-    KIDNAPPING = "kidnapping"
-    RIOT = "riot"
-    VANDALISM = "vandalism"
-    SUSPICIOUS_ACTIVITY = "suspicious_activity"
-    OTHER = "other"
+    # Values MUST match DB enum 'incidenttype' labels exactly (UPPERCASE)
+    THEFT = "THEFT"
+    ASSAULT = "ASSAULT"
+    HARASSMENT = "HARASSMENT"
+    ROBBERY = "ROBBERY"
+    STALKING = "STALKING"
+    DOMESTIC_VIOLENCE = "DOMESTIC_VIOLENCE"
+    TRAFFIC_ACCIDENT = "TRAFFIC_ACCIDENT"
+    PICKPOCKETING = "PICKPOCKETING"
+    BURGLARY = "BURGLARY"
+    MURDER = "MURDER"
+    KIDNAPPING = "KIDNAPPING"
+    RIOT = "RIOT"
+    VANDALISM = "VANDALISM"
+    SUSPICIOUS_ACTIVITY = "SUSPICIOUS_ACTIVITY"
+    OTHER = "OTHER"
 
 
 class IncidentSeverity(str, enum.Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
+    # Values MUST match DB enum 'incidentseverity' labels exactly (UPPERCASE)
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
 
 
 class IncidentSource(str, enum.Enum):
-    NEWS = "news"
-    COMMUNITY_REPORT = "community_report"
-    SOS = "sos"
-    USER_REPORT = "user_report"
-    POLICE = "police"
-    SYSTEM = "system"
+    # Values MUST match DB enum 'incidentsource' labels exactly (UPPERCASE)
+    NEWS = "NEWS"
+    COMMUNITY_REPORT = "COMMUNITY_REPORT"
+    SOS = "SOS"
+    USER_REPORT = "USER_REPORT"
+    POLICE = "POLICE"
+    SYSTEM = "SYSTEM"
 
 
 class IncidentStatus(str, enum.Enum):
-    PENDING = "pending"
-    VERIFIED = "verified"
-    DISMISSED = "dismissed"
-    DUPLICATE = "duplicate"
-    SPAM = "spam"
+    # Values MUST match DB enum 'incidentstatus' labels exactly (UPPERCASE)
+    PENDING = "PENDING"
+    VERIFIED = "VERIFIED"
+    DISMISSED = "DISMISSED"
+    DUPLICATE = "DUPLICATE"
+    SPAM = "SPAM"
 
 
 class Incident(Base):
@@ -60,14 +64,24 @@ class Incident(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    incident_type: Mapped[IncidentType] = mapped_column(SAEnum(IncidentType), nullable=False)
-    severity: Mapped[IncidentSeverity] = mapped_column(SAEnum(IncidentSeverity), nullable=False, index=True)
-    source: Mapped[IncidentSource] = mapped_column(SAEnum(IncidentSource), nullable=False)
-    status: Mapped[IncidentStatus] = mapped_column(SAEnum(IncidentStatus), default=IncidentStatus.PENDING)
+    # create_type=False: reference existing DB enum types, do not recreate them
+    incident_type: Mapped[IncidentType] = mapped_column(
+        SAEnum(IncidentType, name="incidenttype", create_type=False), nullable=False
+    )
+    severity: Mapped[IncidentSeverity] = mapped_column(
+        SAEnum(IncidentSeverity, name="incidentseverity", create_type=False), nullable=False, index=True
+    )
+    source: Mapped[IncidentSource] = mapped_column(
+        SAEnum(IncidentSource, name="incidentsource", create_type=False), nullable=False
+    )
+    status: Mapped[IncidentStatus] = mapped_column(
+        SAEnum(IncidentStatus, name="incidentstatus", create_type=False), default=IncidentStatus.PENDING
+    )
     confidence_score: Mapped[float] = mapped_column(Float, default=0.0)
     latitude: Mapped[float] = mapped_column(Float, nullable=False)
     longitude: Mapped[float] = mapped_column(Float, nullable=False)
-    geom = mapped_column(Geometry("POINT", srid=4326), nullable=True)
+    # DB constraint is NOT NULL — always set geom when creating Incident objects.
+    geom = mapped_column(Geometry("POINT", srid=4326), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=True)
     title: Mapped[str] = mapped_column(String(500), nullable=True)
     address: Mapped[str] = mapped_column(String(500), nullable=True)
