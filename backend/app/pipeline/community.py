@@ -29,7 +29,7 @@ async def process_pending_reports() -> dict:
         result = await session.execute(
             text("""
                 SELECT id, user_id, incident_type, severity, latitude, longitude,
-                       description, confidence_score, reporter_ip, created_at, source
+                       description, confidence_score, created_at
                 FROM safety_reports
                 WHERE status::text = 'pending'
                 ORDER BY created_at ASC
@@ -50,9 +50,7 @@ async def process_pending_reports() -> dict:
             "longitude": float(r[5]) if r[5] else None,
             "description": r[6] or "",
             "confidence_score": float(r[7]) if r[7] else 0.0,
-            "reporter_ip": r[8],
-            "created_at": r[9],
-            "source": r[10],
+            "created_at": r[8],
         })
     logger.info(f"Processing {len(reports)} pending reports")
     classified = []
