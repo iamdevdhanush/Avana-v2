@@ -445,7 +445,7 @@ export const riskApi = {
         sw_lat: bounds.south, sw_lng: bounds.west,
         ne_lat: bounds.north, ne_lng: bounds.east,
         zoom,
-        min_score: 25,
+        min_score: 0,
       })
       const inner = (raw.data || raw) as Record<string, unknown>
       const points = (inner.points || []) as Record<string, unknown>[]

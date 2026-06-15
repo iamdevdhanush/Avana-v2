@@ -4,21 +4,22 @@ import L from 'leaflet'
 import 'leaflet.heat'
 import type { HeatmapPoint } from '@/types'
 
-const MIN_SCORE = 0.25
+const MIN_VISIBLE = 0.25
+const MAX_VISIBLE = 0.40
 
 const HEAT_GRADIENT: Record<number, string> = {
   0.0: 'rgba(0,0,0,0)',
-  0.10: 'rgba(255,214,0,0.10)',
-  0.33: 'rgba(255,214,0,0.45)',
-  0.50: 'rgba(255,140,0,0.65)',
-  0.67: 'rgba(255,23,68,0.85)',
+  0.15: 'rgba(255,183,77,0.20)',
+  0.33: 'rgba(255,214,0,0.50)',
+  0.50: 'rgba(255,140,0,0.70)',
+  0.67: 'rgba(255,23,68,0.90)',
   0.85: '#D50000',
   1.0: '#B71C1C',
 }
 
-function remapWeight(raw01: number): number {
-  if (raw01 <= MIN_SCORE) return 0
-  return Math.min(1, (raw01 - MIN_SCORE) / (1 - MIN_SCORE))
+function remapWeight(weight01: number): number {
+  if (weight01 <= MIN_VISIBLE) return 0
+  return Math.min(1, (weight01 - MIN_VISIBLE) / (MAX_VISIBLE - MIN_VISIBLE))
 }
 
 function thresholdPx(zoom: number): number {
@@ -36,7 +37,7 @@ export function HeatmapLayer({ points, onHotspotClick }: HeatmapLayerProps) {
   const clickClean = useRef<(() => void) | null>(null)
 
   const filtered = useMemo(
-    () => points.filter((p) => p.weight >= MIN_SCORE),
+    () => points.filter((p) => p.weight >= MIN_VISIBLE),
     [points]
   )
 
