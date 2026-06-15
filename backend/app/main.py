@@ -14,6 +14,8 @@ from sqlalchemy.exc import IntegrityError, DataError
 from app.config import settings
 from app.database import init_db, check_db, validate_schema
 from app.api.router import api_router
+from app.dependencies import require_admin
+from app.models.user import User
 from app.utils.security import rate_limit_middleware
 
 logger = logging.getLogger(__name__)
@@ -251,7 +253,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 @app.get("/debug/env")
-async def debug_env():
+async def debug_env(admin: User = Depends(require_admin)):
     url = settings.build_database_url()
     return {
         "DATABASE_URL_set": bool(settings.DATABASE_URL),
@@ -284,19 +286,17 @@ async def health_gemini():
     from app.services.gemini import gemini_service, GeminiQuotaExceeded
     status = gemini_service.get_status()
     if status.get("status") == "QUOTA_EXCEEDED":
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "QUOTA_EXCEEDED",
-                "error": "Gemini API quota exceeded",
-                "retry_after_seconds": status.get("retry_after_seconds", 900),
-            },
-        )
+        return {
+            "status": "unavailable",
+            "detail": "Gemini API quota exceeded",
+            "note": "Women-safety classification uses keyword fallback",
+        }
     if status.get("status") == "OFFLINE":
-        return JSONResponse(
-            status_code=503,
-            content={"status": "OFFLINE", "error": status.get("error", "Gemini not available")},
-        )
+        return {
+            "status": "unavailable",
+            "detail": status.get("error", "Gemini API not configured or unreachable"),
+            "note": "Women-safety classification uses keyword fallback",
+        }
     import asyncio
     try:
         loop = asyncio.get_event_loop()
@@ -305,30 +305,29 @@ async def health_gemini():
             lambda: gemini_service.generate("Respond with only the word: OK"),
         )
         if result and "OK" in result:
-            return {"status": "ONLINE", "model": "gemini-2.0-flash"}
-        return JSONResponse(
-            status_code=503,
-            content={"status": "OFFLINE", "error": "Gemini test request returned unexpected response"},
-        )
+            return {"status": "available", "model": "gemini-2.0-flash"}
+        return {
+            "status": "unavailable",
+            "detail": "Gemini test request returned unexpected response",
+            "note": "Women-safety classification uses keyword fallback",
+        }
     except GeminiQuotaExceeded:
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "QUOTA_EXCEEDED",
-                "error": "Gemini API quota exceeded",
-                "retry_after_seconds": status.get("retry_after_seconds", 900),
-            },
-        )
+        return {
+            "status": "unavailable",
+            "detail": "Gemini API quota exceeded",
+            "note": "Women-safety classification uses keyword fallback",
+        }
     except Exception as e:
         logger.error(f"Gemini health check failed: {e}")
-        return JSONResponse(
-            status_code=503,
-            content={"status": "OFFLINE", "error": str(e)},
-        )
+        return {
+            "status": "unavailable",
+            "detail": "Gemini API not configured or unreachable",
+            "note": "Women-safety classification uses keyword fallback",
+        }
 
 
 @app.get("/api/v1/debug/gemini")
-async def debug_gemini():
+async def debug_gemini(admin: User = Depends(require_admin)):
     from app.services.gemini import gemini_service, GeminiQuotaExceeded, GeminiAuthError
     import google.generativeai as genai
 

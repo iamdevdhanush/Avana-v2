@@ -113,6 +113,7 @@ async def get_heatmap(
             WHERE latitude BETWEEN :sw_lat AND :ne_lat
               AND longitude BETWEEN :sw_lng AND :ne_lng
               AND district IS NOT NULL
+              AND metadata->>'women_safety_category' IS NOT NULL
             GROUP BY district
         """),
         {"sw_lat": body.sw_lat, "ne_lat": body.ne_lat, "sw_lng": body.sw_lng, "ne_lng": body.ne_lng},
@@ -170,7 +171,9 @@ async def get_district_risk(
                 COUNT(*) FILTER (WHERE UPPER(severity::text) = 'MEDIUM') as medium_risk_count,
                 COUNT(*) FILTER (WHERE UPPER(severity::text) = 'LOW') as low_risk_count
             FROM incidents
-            WHERE district = :district AND UPPER(status::text) != 'DISMISSED'
+            WHERE district = :district
+              AND UPPER(status::text) != 'DISMISSED'
+              AND metadata->>'women_safety_category' IS NOT NULL
         """),
         {"district": district},
     )

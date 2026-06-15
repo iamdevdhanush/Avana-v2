@@ -74,6 +74,7 @@ class ExplainSourceItem(BaseModel):
     source: str
     source_url: Optional[str] = None
     distance_meters: float = 0.0
+    women_safety_category: Optional[str] = None
     publisher: Optional[str] = None
     dataset_name: Optional[str] = None
     dataset_year: Optional[int] = None

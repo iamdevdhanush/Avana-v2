@@ -26,9 +26,9 @@ async def get_dashboard(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),
 ):
-    total_inc = await db.execute(text("SELECT COUNT(*) FROM incidents"))
+    total_inc = await db.execute(text("SELECT COUNT(*) FROM incidents WHERE metadata->>'women_safety_category' IS NOT NULL"))
     total_incidents = total_inc.scalar() or 0
-    logger.info(f"[DASHBOARD] analytics total incidents: {total_incidents}")
+    logger.info(f"[DASHBOARD] analytics total incidents (women-safety): {total_incidents}")
 
     active = await db.execute(text("SELECT COUNT(*) FROM users WHERE is_active = true"))
     active_users = active.scalar() or 0
@@ -52,7 +52,7 @@ async def get_dashboard(
                         WHEN UPPER(severity::text) = 'LOW' THEN 1
                         ELSE 0
                     END) as avg_score
-            FROM incidents WHERE district IS NOT NULL
+            FROM incidents WHERE district IS NOT NULL AND metadata->>'women_safety_category' IS NOT NULL
             GROUP BY district ORDER BY total DESC LIMIT 20
         """)
     )
@@ -72,7 +72,8 @@ async def get_dashboard(
     by_type = await db.execute(
         text("""
             SELECT incident_type, COUNT(*) as cnt
-            FROM incidents GROUP BY incident_type ORDER BY cnt DESC
+            FROM incidents WHERE metadata->>'women_safety_category' IS NOT NULL
+            GROUP BY incident_type ORDER BY cnt DESC
         """)
     )
     incidents_by_type = [
@@ -84,7 +85,7 @@ async def get_dashboard(
     risk_trend_rows = await db.execute(
         text("""
             SELECT DATE(created_at) as dt, AVG(confidence_score) as avg_conf
-            FROM incidents WHERE created_at >= :start
+            FROM incidents WHERE created_at >= :start AND metadata->>'women_safety_category' IS NOT NULL
             GROUP BY dt ORDER BY dt
         """),
         {"start": thirty_days_ago},
@@ -97,7 +98,7 @@ async def get_dashboard(
     inc_trend_rows = await db.execute(
         text("""
             SELECT DATE(created_at) as dt, COUNT(*) as cnt
-            FROM incidents WHERE created_at >= :start
+            FROM incidents WHERE created_at >= :start AND metadata->>'women_safety_category' IS NOT NULL
             GROUP BY dt ORDER BY dt
         """),
         {"start": thirty_days_ago},
@@ -111,7 +112,9 @@ async def get_dashboard(
         text("""
             SELECT id, incident_type, severity, district, created_at, status
             FROM incidents
-            WHERE UPPER(severity::text) IN ('HIGH', 'CRITICAL') AND created_at >= :start
+            WHERE metadata->>'women_safety_category' IS NOT NULL
+              AND UPPER(severity::text) IN ('HIGH', 'CRITICAL')
+              AND created_at >= :start
             ORDER BY created_at DESC LIMIT 20
         """),
         {"start": thirty_days_ago},
@@ -150,6 +153,7 @@ async def get_district_analytics(
                    MAX(created_at) as last_incident
             FROM incidents
             WHERE district IS NOT NULL
+              AND metadata->>'women_safety_category' IS NOT NULL
             GROUP BY district
             ORDER BY total DESC
         """)
@@ -186,6 +190,7 @@ async def get_trends(
                     COUNT(*) FILTER (WHERE UPPER(source::text) = 'USER_REPORT') as user_report_count
             FROM incidents
             WHERE created_at >= :start
+              AND metadata->>'women_safety_category' IS NOT NULL
             GROUP BY dt
             ORDER BY dt
         """),

@@ -61,6 +61,7 @@ async def explain_risk(
                             :radius_m
                         )
                           AND (status IS NULL OR status::text != 'dismissed')
+                          AND metadata->>'women_safety_category' IS NOT NULL
                         ORDER BY dist ASC
                         LIMIT 25
                     """),
