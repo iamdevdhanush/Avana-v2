@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
-import { Mail, Lock, User, Phone, Eye, EyeOff, Loader2, Shield, ArrowLeft } from 'lucide-react'
+import { Mail, Lock, User, Phone, Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -79,7 +79,7 @@ export function SignupScreen() {
       <div className="w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center gap-2">
           <div className="flex items-center gap-2">
-            <Shield className="h-8 w-8 text-primary" />
+            <img src="/icons/icon-72x72.png" alt="Avana" className="h-8 w-8 object-contain" />
             <span className="text-2xl font-bold">Avana</span>
           </div>
           <p className="text-sm text-muted-foreground">Create your account to get started.</p>

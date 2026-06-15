@@ -1,5 +1,4 @@
 import * as React from 'react'
-import { Shield } from 'lucide-react'
 
 interface SplashScreenProps {
   onDone: () => void
@@ -30,13 +29,15 @@ export function SplashScreen({ onDone }: SplashScreenProps) {
         className="flex flex-col items-center gap-6 animate-fade-in-up"
         style={{ animationDelay: '100ms', animationFillMode: 'both' }}
       >
-        {/* Shield icon with glow */}
+        {/* Logo with glow */}
         <div className="relative">
-          <div
-            className="animate-logo-glow"
-            style={{ filter: 'drop-shadow(0 0 16px rgba(168,85,247,0.5))' }}
-          >
-            <Shield className="h-20 w-20 text-[#A855F7]" strokeWidth={1.5} />
+          <div className="animate-logo-glow flex items-center justify-center">
+            <img
+              src="/icons/icon-192x192.png"
+              alt="Avana"
+              className="h-24 w-24 object-contain"
+              style={{ filter: 'drop-shadow(0 0 20px rgba(168,85,247,0.5))' }}
+            />
           </div>
           {/* Outer glow rings */}
           <div

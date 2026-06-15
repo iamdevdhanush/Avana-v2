@@ -50,7 +50,7 @@ export function Layout() {
       {/* Header */}
       <header className="flex h-12 items-center justify-between px-4 border-b border-[#1F2937] bg-[#09090B] shrink-0 z-[1001]">
         <div className="flex items-center gap-2">
-          <Shield className="h-5 w-5 text-[#A855F7]" />
+          <img src="/icons/icon-72x72.png" alt="Avana" className="h-6 w-6 object-contain" />
           <span
             className="text-base font-bold tracking-tight"
             style={{

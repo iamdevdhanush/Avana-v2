@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Shield, X } from 'lucide-react'
+import { X } from 'lucide-react'
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -108,14 +108,13 @@ export function InstallBanner() {
 
         <div className="p-5 pt-6">
           <div className="flex items-start gap-3.5">
-            <div
-              className="shrink-0 flex items-center justify-center w-12 h-12 rounded-2xl"
+            <div className="shrink-0 flex items-center justify-center w-12 h-12 rounded-2xl overflow-hidden"
               style={{
-                background: 'linear-gradient(135deg, rgba(168,85,247,0.2) 0%, rgba(236,72,153,0.2) 100%)',
-                border: '1px solid rgba(168,85,247,0.25)',
+                background: 'rgba(168,85,247,0.1)',
+                border: '1px solid rgba(168,85,247,0.2)',
               }}
             >
-              <Shield className="h-6 w-6" style={{ color: '#A855F7' }} />
+              <img src="/icons/icon-72x72.png" alt="Avana" className="w-10 h-10 object-contain" />
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="text-base font-bold" style={{ color: '#F9FAFB' }}>
