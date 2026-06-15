@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 import uuid
@@ -34,8 +35,91 @@ async def lifespan(app: FastAPI):
 
     await validate_schema()
     logger.info("Schema validation complete")
+
+    asyncio.create_task(_bootstrap_heatmap_data())
+
     yield
     logger.info("Shutting down")
+
+
+async def _bootstrap_heatmap_data():
+    from sqlalchemy import text
+    from app.database import get_session_factory
+
+    try:
+        factory = get_session_factory()
+        async with factory() as session:
+            count = await session.scalar(text("SELECT COUNT(*) FROM risk_scores"))
+            if count and count > 0:
+                logger.info(f"[BOOTSTRAP] risk_scores already has {count} rows — skipping seed")
+                return
+
+        logger.info("[BOOTSTRAP] risk_scores is empty — running initial pipeline")
+        from app.pipeline.intelligence import run_intelligence_pipeline
+
+        result = await run_intelligence_pipeline()
+
+        if result.get("status") == "skipped" and "gemini" in result.get("reason", ""):
+            logger.info("[BOOTSTRAP] Pipeline skipped (Gemini unavailable) — retrying with mock mode")
+            original = settings.MOCK_INTELLIGENCE_MODE
+            settings.MOCK_INTELLIGENCE_MODE = True
+            try:
+                result = await run_intelligence_pipeline()
+                logger.info(f"[BOOTSTRAP] Mock pipeline result: {result.get('status', 'unknown')}")
+            finally:
+                settings.MOCK_INTELLIGENCE_MODE = original
+
+        heat_count = result.get("steps", {}).get("heatmap", {}).get("points_generated", 0)
+        if heat_count > 0:
+            logger.info(f"[BOOTSTRAP] Pipeline complete — {heat_count} heatmap points generated")
+            return
+
+        logger.warning("[BOOTSTRAP] Pipeline produced no heatmap points — falling back to direct seed")
+    except Exception as e:
+        logger.error(f"[BOOTSTRAP] Pipeline failed: {e} — falling back to direct seed")
+
+    logger.info("[BOOTSTRAP] Seeding risk_scores directly with Karnataka city data")
+    cities = [
+        (12.9716, 77.5946, 65.0, "HIGH_RISK"),
+        (12.2958, 76.6394, 45.0, "MODERATE"),
+        (12.9141, 74.8560, 30.0, "MODERATE"),
+        (15.3647, 75.1240, 55.0, "HIGH_RISK"),
+        (17.3290, 76.8344, 40.0, "MODERATE"),
+        (14.4419, 75.9172, 35.0, "MODERATE"),
+        (15.8573, 74.5069, 20.0, "SAFE"),
+        (15.8497, 74.4977, 25.0, "SAFE"),
+        (13.3409, 74.7421, 15.0, "SAFE"),
+    ]
+    factory = get_session_factory()
+    async with factory() as session:
+        for lat, lng, score, category in cities:
+            try:
+                await session.execute(
+                    text("""
+                        INSERT INTO risk_scores
+                            (id, location_id, latitude, longitude, score, category,
+                             metadata, calculated_at, created_at)
+                        VALUES (
+                            gen_random_uuid(),
+                            COALESCE(
+                                (SELECT id FROM locations ORDER BY created_at LIMIT 1),
+                                gen_random_uuid()
+                            ),
+                            :lat, :lng, :score, :cat,
+                            '{}'::jsonb, NOW(), NOW()
+                        )
+                        ON CONFLICT (latitude, longitude)
+                        DO UPDATE SET
+                            score = EXCLUDED.score,
+                            category = EXCLUDED.category,
+                            calculated_at = NOW()
+                    """),
+                    {"lat": lat, "lng": lng, "score": score, "cat": category},
+                )
+            except Exception as e:
+                logger.warning(f"[BOOTSTRAP] Failed to insert ({lat}, {lng}): {e}")
+        await session.commit()
+    logger.info(f"[BOOTSTRAP] Seeded {len(cities)} direct risk_score entries")
 
 
 app = FastAPI(
