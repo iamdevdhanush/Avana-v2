@@ -7,6 +7,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
 import { useUIStore } from '@/store/uiStore'
+import { InstallBanner } from '@/components/InstallBanner'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,8 +44,11 @@ export function Layout() {
 
   return (
     <div className="flex flex-col h-screen bg-[#09090B] text-[#F9FAFB] overflow-hidden">
+      {/* Install Banner */}
+      <InstallBanner />
+
       {/* Header */}
-      <header className="flex h-12 items-center justify-between px-4 border-b border-[#1F2937] bg-[#09090B] shrink-0 z-30">
+      <header className="flex h-12 items-center justify-between px-4 border-b border-[#1F2937] bg-[#09090B] shrink-0 z-[1001]">
         <div className="flex items-center gap-2">
           <Shield className="h-5 w-5 text-[#A855F7]" />
           <span

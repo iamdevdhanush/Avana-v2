@@ -21,13 +21,35 @@ export function MapScreen() {
 
   const [showRoutePanel, setShowRoutePanel] = React.useState(false)
 
-  const handleHotspotClick = (lat: number, lng: number) => {
+  const handleHotspotClick = React.useCallback((lat: number, lng: number) => {
     setSelectedLocation({ lat, lng })
     setShowRoutePanel(false)
-  }
+  }, [setSelectedLocation])
+
+  const handleGetSafeRoute = React.useCallback(() => {
+    setShowRoutePanel(true)
+    setSelectedLocation(null)
+  }, [setSelectedLocation])
+
+  const handleClosePanel = React.useCallback(() => {
+    setSelectedLocation(null)
+  }, [setSelectedLocation])
+
+  const handleCloseRoute = React.useCallback(() => {
+    setShowRoutePanel(false)
+  }, [])
+
+  const handleOpenRoute = React.useCallback(() => {
+    setShowRoutePanel(true)
+  }, [])
 
   return (
-    <div className="relative w-full" style={{ height: 'calc(100vh - 48px - 64px)' }}>
+    <div
+      className="relative w-full"
+      style={{
+        height: 'calc(100vh - 48px - 64px - env(safe-area-inset-bottom, 0px))',
+      }}
+    >
       <SafetyMap
         heatmapPoints={heatmapPoints}
         showHeatmap
@@ -42,9 +64,9 @@ export function MapScreen() {
       </SafetyMap>
 
       {/* Heatmap freshness + district summaries (bottom left) */}
-      <div className="absolute bottom-24 left-3 z-[1000] space-y-2">
+      <div className="absolute bottom-24 left-3 z-[1000] space-y-2 pointer-events-none">
         <div
-          className="px-2.5 py-1.5 rounded-xl"
+          className="px-2.5 py-1.5 rounded-xl pointer-events-auto"
           style={{
             background: 'rgba(9,9,11,0.88)',
             border: '1px solid rgba(255,255,255,0.06)',
@@ -61,7 +83,7 @@ export function MapScreen() {
 
         {districtSummaries.length > 0 && (
           <div
-            className="px-2.5 py-2 rounded-xl space-y-1.5"
+            className="px-2.5 py-2 rounded-xl space-y-1.5 pointer-events-auto"
             style={{
               background: 'rgba(9,9,11,0.88)',
               border: '1px solid rgba(255,255,255,0.06)',
@@ -79,7 +101,7 @@ export function MapScreen() {
                     color: s.trend === 'worsening' ? '#FF1744' : s.trend === 'improving' ? '#00E676' : '#FFD600',
                   }}
                 >
-                  {s.trend === 'worsening' ? '↑' : s.trend === 'improving' ? '↓' : '→'}
+                  {s.trend === 'worsening' ? '\u2191' : s.trend === 'improving' ? '\u2193' : '\u2192'}
                   {' '}{s.trend}
                 </span>
               </div>
@@ -90,9 +112,9 @@ export function MapScreen() {
 
       {/* Loading indicator */}
       {heatmapLoading && (
-        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[1000]">
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none">
           <div
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs pointer-events-auto"
             style={{
               background: 'rgba(9,9,11,0.85)',
               border: '1px solid rgba(255,255,255,0.06)',
@@ -108,26 +130,23 @@ export function MapScreen() {
 
       {/* Route Panel */}
       {showRoutePanel && (
-        <RoutePanel onClose={() => setShowRoutePanel(false)} />
+        <RoutePanel onClose={handleCloseRoute} />
       )}
 
       {/* Risk Intelligence Panel (bottom sheet) */}
       {selectedLocation && !showRoutePanel && (
         <RiskIntelligencePanel
-          onGetSafeRoute={() => {
-            setShowRoutePanel(true)
-            setSelectedLocation(null)
-          }}
-          onClose={() => setSelectedLocation(null)}
+          onGetSafeRoute={handleGetSafeRoute}
+          onClose={handleClosePanel}
         />
       )}
 
       {/* Find Safe Route FAB */}
       {!showRoutePanel && !selectedLocation && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[1000]">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none">
           <button
-            onClick={() => setShowRoutePanel(true)}
-            className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-bold text-white shadow-xl transition-all hover:scale-105 active:scale-95"
+            onClick={handleOpenRoute}
+            className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-bold text-white shadow-xl transition-all hover:scale-105 active:scale-95 pointer-events-auto"
             style={{
               background: 'linear-gradient(135deg, #FF1744 0%, #D50000 100%)',
               boxShadow: '0 8px 32px rgba(255,23,68,0.4)',

@@ -41,6 +41,21 @@ const defaultPosition: GeolocationState = {
   timestamp: null,
 }
 
+const DRIFT_THRESHOLD_METERS = 25
+const MIN_UPDATE_INTERVAL_MS = 2000
+
+function haversineDistance(
+  lat1: number, lng1: number,
+  lat2: number, lng2: number
+): number {
+  const R = 6371000
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
 export function useGeolocation(options: PositionOptions = {}): UseGeolocationReturn {
   const [position, setPosition] = useState<GeolocationState>(defaultPosition)
   const [error, setError] = useState<string | null>(null)
@@ -49,32 +64,63 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
   const [isFallback, setIsFallback] = useState(false)
   const watchIdRef = useRef<number | null>(null)
   const mountedRef = useRef(true)
+  const lastUpdateRef = useRef<number>(0)
+  const lastStablePosRef = useRef<GeolocationState | null>(null)
 
   const defaultOptions = useMemo<PositionOptions>(() => ({
     enableHighAccuracy: true,
-    timeout: 5000,
-    maximumAge: 30000,
+    timeout: 8000,
+    maximumAge: 15000,
     ...options,
   }), [options])
 
   const handleSuccess = useCallback((pos: GeolocationPosition) => {
     if (!mountedRef.current) return
-    console.log(`[GEOLOCATION] Position: ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)} | accuracy: ±${pos.coords.accuracy}m`)
-    setPosition({
-      latitude: pos.coords.latitude,
-      longitude: pos.coords.longitude,
-      accuracy: pos.coords.accuracy,
-      speed: pos.coords.speed,
-      heading: pos.coords.heading,
-      altitude: pos.coords.altitude,
+
+    const now = Date.now()
+    const coords = pos.coords
+    const lastStable = lastStablePosRef.current
+
+    if (lastStable?.latitude != null && lastStable?.longitude != null) {
+      const dist = haversineDistance(
+        lastStable.latitude, lastStable.longitude,
+        coords.latitude, coords.longitude
+      )
+
+      if (dist < DRIFT_THRESHOLD_METERS && now - lastUpdateRef.current < MIN_UPDATE_INTERVAL_MS) {
+        return
+      }
+    }
+
+    lastUpdateRef.current = now
+    const newPos: GeolocationState = {
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      accuracy: coords.accuracy,
+      speed: coords.speed,
+      heading: coords.heading,
+      altitude: coords.altitude,
       timestamp: pos.timestamp,
-    })
+    }
+    lastStablePosRef.current = newPos
+    setPosition(newPos)
     setError(null)
     setIsLoading(false)
   }, [])
 
   const activateFallback = useCallback(() => {
-    console.log(`[GEOLOCATION] Using fallback location: Shivamogga (13.9299, 75.5681)`)
+    const stored = sessionStorage.getItem('avana_last_location')
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored)
+        if (parsed.latitude && parsed.longitude) {
+          setPosition({ ...FALLBACK_POSITION, latitude: parsed.latitude, longitude: parsed.longitude })
+          setIsFallback(true)
+          setIsLoading(false)
+          return
+        }
+      } catch {}
+    }
     setPosition(FALLBACK_POSITION)
     setIsFallback(true)
     setIsLoading(false)
@@ -86,19 +132,15 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
     switch (err.code) {
       case err.PERMISSION_DENIED:
         message = 'Location permission denied. Please enable location access.'
-        console.error(`[GEOLOCATION] Error: ${message}`)
         break
       case err.POSITION_UNAVAILABLE:
         message = 'Location information is unavailable.'
-        console.error(`[GEOLOCATION] Error: ${message}`)
         break
       case err.TIMEOUT:
         message = 'Location request timed out.'
-        console.error(`[GEOLOCATION] Error: ${message}`)
         break
       default:
         message = 'An unknown error occurred while fetching location.'
-        console.error(`[GEOLOCATION] Error (code ${err.code}): ${message}`)
     }
     setError(message)
     activateFallback()
@@ -117,7 +159,7 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
     watchIdRef.current = navigator.geolocation.watchPosition(
       handleSuccess,
       handleError,
-      defaultOptions
+      defaultOptions,
     )
   }, [handleSuccess, handleError, defaultOptions, activateFallback])
 
@@ -136,7 +178,6 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
       activateFallback()
       return
     }
-
     setIsLoading(true)
     navigator.geolocation.getCurrentPosition(handleSuccess, handleError, defaultOptions)
   }, [handleSuccess, handleError, defaultOptions, activateFallback])
@@ -152,7 +193,7 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
     }
   }, [startWatching])
 
-  return {
+  const result = useMemo(() => ({
     position,
     error,
     isLoading,
@@ -161,5 +202,7 @@ export function useGeolocation(options: PositionOptions = {}): UseGeolocationRet
     startWatching,
     stopWatching,
     refreshPosition,
-  }
+  }), [position, error, isLoading, isWatching, isFallback, startWatching, stopWatching, refreshPosition])
+
+  return result
 }

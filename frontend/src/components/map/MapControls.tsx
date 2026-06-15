@@ -10,7 +10,7 @@ export function MapControls() {
   const { addToast } = useUIStore()
   const [showLegend, setShowLegend] = React.useState(false)
 
-  const handleRecenter = () => {
+  const handleRecenter = React.useCallback(() => {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         map.flyTo([pos.coords.latitude, pos.coords.longitude], 15)
@@ -25,15 +25,19 @@ export function MapControls() {
         map.flyTo([12.9716, 77.5946], 12)
       },
     )
-  }
+  }, [map, addToast])
+
+  const toggleLegend = React.useCallback(() => {
+    setShowLegend((prev) => !prev)
+  }, [])
 
   return (
     <>
       {/* Top-right controls */}
-      <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-2">
+      <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-2 pointer-events-none">
         <button
           onClick={handleRecenter}
-          className="h-9 w-9 flex items-center justify-center rounded-xl transition-all"
+          className="h-9 w-9 flex items-center justify-center rounded-xl transition-all pointer-events-auto"
           style={{
             background: 'rgba(15,15,22,0.9)',
             border: '1px solid rgba(255,255,255,0.08)',
@@ -46,8 +50,8 @@ export function MapControls() {
         </button>
 
         <button
-          onClick={() => setShowLegend(!showLegend)}
-          className="h-9 w-9 flex items-center justify-center rounded-xl transition-all"
+          onClick={toggleLegend}
+          className="h-9 w-9 flex items-center justify-center rounded-xl transition-all pointer-events-auto"
           style={{
             background: showLegend ? 'rgba(255,23,68,0.2)' : 'rgba(15,15,22,0.9)',
             border: `1px solid ${showLegend ? 'rgba(255,23,68,0.3)' : 'rgba(255,255,255,0.08)'}`,
@@ -62,8 +66,10 @@ export function MapControls() {
 
       {/* Legend panel - bottom left */}
       {showLegend && (
-        <div className="absolute bottom-6 left-3 z-[1000]">
-          <HeatmapLegend visible />
+        <div className="absolute bottom-6 left-3 z-[1000] pointer-events-none">
+          <div className="pointer-events-auto">
+            <HeatmapLegend visible />
+          </div>
         </div>
       )}
     </>

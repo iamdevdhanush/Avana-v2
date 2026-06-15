@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import {
   MapContainer,
   TileLayer,
@@ -27,33 +27,52 @@ const userIcon = L.divIcon({
 function MapBoundsUpdater() {
   const map = useMap()
   const setBounds = useMapStore((s) => s.setBounds)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   useEffect(() => {
     const update = () => {
-      const b = map.getBounds()
-      setBounds({
-        north: b.getNorth(),
-        south: b.getSouth(),
-        east: b.getEast(),
-        west: b.getWest(),
-      })
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(() => {
+        const b = map.getBounds()
+        setBounds({
+          north: b.getNorth(),
+          south: b.getSouth(),
+          east: b.getEast(),
+          west: b.getWest(),
+        })
+      }, 300)
     }
     map.on('moveend', update)
     update()
-    return () => { map.off('moveend', update) }
+    return () => {
+      map.off('moveend', update)
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
   }, [map, setBounds])
   return null
 }
 
-function StaticMarker({ position, icon }: { position: [number, number]; icon: L.DivIcon }) {
+const StaticMarker = memo(function StaticMarker({ position, icon }: { position: [number, number]; icon: L.DivIcon }) {
   const map = useMap()
   const markerRef = useRef<L.Marker | null>(null)
+
   useEffect(() => {
+    if (markerRef.current) {
+      markerRef.current.setLatLng(position)
+      return
+    }
     const marker = L.marker(position, { icon, interactive: false }).addTo(map)
     markerRef.current = marker
-    return () => { map.removeLayer(marker) }
+    return () => {
+      if (markerRef.current) {
+        map.removeLayer(markerRef.current)
+        markerRef.current = null
+      }
+    }
   }, [map, position, icon])
+
   return null
-}
+})
 
 function getRouteColor(score: number): string {
   if (score >= 0.8) return '#00E676'
@@ -71,7 +90,7 @@ interface SafetyMapProps {
   children?: React.ReactNode
 }
 
-export function SafetyMap({
+export const SafetyMap = memo(function SafetyMap({
   heatmapPoints = [],
   selectedRoute = null,
   userLocation = null,
@@ -127,4 +146,4 @@ export function SafetyMap({
       )}
     </MapContainer>
   )
-}
+})
