@@ -5,9 +5,53 @@ Standardizes district names, crime categories, handles duplicates and missing va
 import logging
 from typing import Dict, List, Optional, Tuple
 from app.pipeline.karnataka_geo import resolve_district, resolve_district_from_city
+from app.pipeline.women_safety import (
+    WOMEN_SAFETY_CATEGORIES, INCIDENT_TYPE_TO_WOMEN_SAFETY,
+    is_women_safety_category,
+)
 
 logger = logging.getLogger(__name__)
 
+# Map raw crime type text → women_safety_category value
+# Only women-safety-relevant crimes are mapped; others map to None
+WOMEN_SAFETY_CRIME_MAPPING: Dict[str, str] = {
+    "rape": "Rape",
+    "gang rape": "Gang Rape",
+    "attempt to rape": "Attempt to Rape",
+    "sexual assault": "Sexual Assault",
+    "sexual harassment": "Sexual Harassment",
+    "molestation": "Molestation",
+    "stalking": "Stalking",
+    "cyber stalking": "Cyber Stalking",
+    "voyeurism": "Voyeurism",
+    "kidnapping of women": "Kidnapping of Women",
+    "abduction of women": "Abduction of Women",
+    "human trafficking": "Human Trafficking",
+    "forced prostitution": "Forced Prostitution",
+    "acid attack": "Acid Attack",
+    "pocso": "POCSO Sexual Assault",
+    "domestic violence": "Domestic Violence",
+    "cruelty by husband": "Cruelty by Husband",
+    "dowry harassment": "Dowry Harassment",
+    "dowry death": "Dowry Death",
+    "assault against women": "Assault Against Women",
+    "murder of women": "Murder of Women",
+    "attempted murder of women": "Attempted Murder of Women",
+    "online harassment": "Online Harassment",
+    "cyber harassment": "Cyber Harassment",
+    "blackmail": "Blackmail",
+    "threats against women": "Threats Against Women",
+    "chain snatching": "Chain Snatching",
+    "robbery against women": "Robbery Against Women",
+    "public harassment": "Public Harassment",
+    "unsafe transport": "Unsafe Transport",
+    "harassment near schools": "Harassment Near Schools",
+    "harassment near colleges": "Harassment Near Colleges",
+    "harassment near hostels": "Harassment Near Hostels",
+    "harassment near workplaces": "Harassment Near Workplaces",
+}
+
+# Legacy IncidentType mapping (for backward compatibility with existing ETL)
 CRIME_CATEGORY_MAPPING: Dict[str, str] = {
     "theft": "THEFT",
     "burglary": "BURGLARY",
@@ -105,6 +149,19 @@ def normalize_crime_category(crime_type: str) -> str:
     return UNKNOWN_CATEGORY
 
 
+def resolve_women_safety_category(crime_type: str) -> Optional[str]:
+    """Map raw crime type text to a women_safety_category value, or None if not relevant."""
+    if not crime_type:
+        return None
+    key = crime_type.lower().strip()
+    if key in WOMEN_SAFETY_CRIME_MAPPING:
+        return WOMEN_SAFETY_CRIME_MAPPING[key]
+    for pattern, category in WOMEN_SAFETY_CRIME_MAPPING.items():
+        if pattern in key:
+            return category
+    return None
+
+
 def deduplicate_records(records: List[dict]) -> List[dict]:
     seen = set()
     deduped = []
@@ -151,12 +208,15 @@ def normalize_records(records: List[dict]) -> List[dict]:
             r.get("district"),
             r.get("city"),
         )
-        crime_category = normalize_crime_category(r.get("crime_type", ""))
+        crime_type = r.get("crime_type", "")
+        crime_category = normalize_crime_category(crime_type)
+        women_safety_cat = resolve_women_safety_category(crime_type)
         record = {
             "district": district,
             "city": city,
-            "crime_type": r.get("crime_type", ""),
+            "crime_type": crime_type,
             "crime_category": crime_category,
+            "women_safety_category": women_safety_cat,
             "crime_count": int(r.get("crime_count", 0)),
             "year": int(r.get("year", 0)),
             "month": int(r["month"]) if r.get("month") else None,

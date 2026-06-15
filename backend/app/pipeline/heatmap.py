@@ -29,6 +29,7 @@ async def compute_localized_bounds(buffer_degrees: float = 0.05, max_cells_per: 
                        MIN(longitude) as min_lng, MAX(longitude) as max_lng
                 FROM incidents
                 WHERE latitude IS NOT NULL
+                  AND metadata->>'women_safety_category' IS NOT NULL
                   AND created_at >= NOW() - INTERVAL '1 hour'
                 GROUP BY district
             """)
@@ -71,40 +72,59 @@ async def _score_points_batch(points: List[Tuple[float, float]]) -> List[dict]:
             text(f"""
                 SELECT pt.lat, pt.lng,
                        COUNT(inc.id) as cnt,
-                       COALESCE(AVG(CASE
-                            WHEN UPPER(inc.severity::text) = 'CRITICAL' THEN 50
-                            WHEN UPPER(inc.severity::text) = 'HIGH' THEN 30
-                            WHEN UPPER(inc.severity::text) = 'MEDIUM' THEN 15
-                            WHEN UPPER(inc.severity::text) = 'LOW' THEN 5
-                           ELSE 10
-                       END), 0) as avg_sev
+                       COALESCE(AVG(
+                           COALESCE(
+                               (inc.metadata->>'women_safety_weight')::float,
+                               CASE
+                                   WHEN UPPER(inc.severity::text) = 'CRITICAL' THEN 100
+                                   WHEN UPPER(inc.severity::text) = 'HIGH' THEN 70
+                                   WHEN UPPER(inc.severity::text) = 'MEDIUM' THEN 40
+                                   WHEN UPPER(inc.severity::text) = 'LOW' THEN 20
+                                   ELSE 10
+                               END
+                           )
+                       ), 0) as avg_wt
                 FROM (VALUES {values_clause}) AS pt(lat, lng)
                 LEFT JOIN incidents inc
                     ON ST_DWithin(
                         inc.geom::geography,
                         ST_SetSRID(ST_MakePoint(pt.lng, pt.lat), 4326)::geography,
                         {radius_m}
-                    ) AND inc.status::text != 'dismissed'
-                GROUP BY pt.lat, pt.lng
-            """)
-        )
-        hist_rows = {(float(r[0]), float(r[1])): {"cnt": int(r[2]), "sev": float(r[3])} for r in hist.fetchall()}
-
-        recent = await session.execute(
-            text(f"""
-                SELECT pt.lat, pt.lng, COUNT(inc.id) as cnt
-                FROM (VALUES {values_clause}) AS pt(lat, lng)
-                LEFT JOIN incidents inc
-                    ON ST_DWithin(
-                        inc.geom::geography,
-                        ST_SetSRID(ST_MakePoint(pt.lng, pt.lat), 4326)::geography,
-                        {radius_m}
-                    ) AND inc.created_at >= NOW() - INTERVAL '7 days'
+                    )
+                    AND inc.metadata->>'women_safety_category' IS NOT NULL
                     AND inc.status::text != 'dismissed'
                 GROUP BY pt.lat, pt.lng
             """)
         )
-        recent_rows = {(float(r[0]), float(r[1])): int(r[2]) for r in recent.fetchall()}
+        hist_rows = {(float(r[0]), float(r[1])): {"cnt": int(r[2]), "wt": float(r[3])} for r in hist.fetchall()}
+
+        recent = await session.execute(
+            text(f"""
+                SELECT pt.lat, pt.lng, COUNT(inc.id) as cnt,
+                       COALESCE(AVG(
+                           COALESCE(
+                               (inc.metadata->>'women_safety_weight')::float, 40.0
+                           ) * CASE
+                               WHEN inc.created_at >= NOW() - INTERVAL '30 days' THEN 1.0
+                               WHEN inc.created_at >= NOW() - INTERVAL '90 days' THEN 0.8
+                               WHEN inc.created_at >= NOW() - INTERVAL '180 days' THEN 0.6
+                               ELSE 0.4
+                           END
+                       ), 0) as weighted_impact
+                FROM (VALUES {values_clause}) AS pt(lat, lng)
+                LEFT JOIN incidents inc
+                    ON ST_DWithin(
+                        inc.geom::geography,
+                        ST_SetSRID(ST_MakePoint(pt.lng, pt.lat), 4326)::geography,
+                        {radius_m}
+                    )
+                    AND inc.created_at >= NOW() - INTERVAL '7 days'
+                    AND inc.metadata->>'women_safety_category' IS NOT NULL
+                    AND inc.status::text != 'dismissed'
+                GROUP BY pt.lat, pt.lng
+            """)
+        )
+        recent_rows = {(float(r[0]), float(r[1])): {"cnt": int(r[2]), "weighted_impact": float(r[3])} for r in recent.fetchall()}
 
         radius_police = 2000
         radius_hosp = 2000
@@ -144,16 +164,19 @@ async def _score_points_batch(points: List[Tuple[float, float]]) -> List[dict]:
     night_penalty = 15.0 if is_night else 0.0
 
     for lat, lng in points:
-        h = hist_rows.get((lat, lng), {"cnt": 0, "sev": 0})
-        r_cnt = recent_rows.get((lat, lng), 0)
+        h = hist_rows.get((lat, lng), {"cnt": 0, "wt": 0})
+        r = recent_rows.get((lat, lng), {"cnt": 0, "weighted_impact": 0})
+        r_cnt = r["cnt"]
+        r_weighted = r["weighted_impact"]
         p_cnt = police_rows.get((lat, lng), 0)
         h_cnt = hospital_rows.get((lat, lng), 0)
 
         density_factor = min(1.0, h["cnt"] / 50.0)
-        severity_factor = h["sev"] / 50.0 if h["sev"] > 0 else 0
+        severity_factor = h["wt"] / 100.0 if h["wt"] > 0 else 0
         historical_risk = (density_factor * 0.6 + severity_factor * 0.4) * 100.0
-        recent_impact = min(30.0, r_cnt * 8.0)
-        sev_penalty = min(25.0, r_cnt * 3.0)
+        recent_impact = min(30.0, r_cnt * 6.0)
+        recency_bonus = min(20.0, r_weighted * 2.0)
+        sev_penalty = min(25.0, r_weighted * 0.3)
         police_bonus = min(10.0, p_cnt * 3.33)
         hospital_bonus = min(5.0, h_cnt * 1.67)
         safety_bonus = police_bonus + hospital_bonus
@@ -161,6 +184,7 @@ async def _score_points_batch(points: List[Tuple[float, float]]) -> List[dict]:
         raw_score = (
             historical_risk * 0.4
             + recent_impact * 0.2
+            + recency_bonus * 0.1
             + night_penalty * 0.15
             + sev_penalty * 0.15
             - safety_bonus * 0.1

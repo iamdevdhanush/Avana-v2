@@ -35,6 +35,11 @@ from app.models.incident import (
     Incident, IncidentType, IncidentSeverity,
     IncidentSource, IncidentStatus,
 )
+from app.pipeline.women_safety import (
+    WOMEN_SAFETY_CATEGORIES, INCIDENT_TYPE_TO_WOMEN_SAFETY,
+    WOMEN_SAFETY_TO_INCIDENT_TYPE, get_women_safety_details,
+    is_women_safety_category,
+)
 from app.services.news_scraper import NewsScraper
 from app.services.nominatim import NominatimService
 
@@ -272,6 +277,40 @@ def classify_incident(text: str) -> Tuple[IncidentType, IncidentSeverity, float]
     return best_type, best_severity, best_confidence
 
 
+# Women-safety keyword overrides — if these match, force a women_safety_category
+_WOMEN_SAFETY_KEYWORDS: Dict[str, str] = {
+    "rape": "Rape",
+    "molest": "Molestation",
+    "molestation": "Molestation",
+    "sexual assault": "Sexual Assault",
+    "sexual harassment": "Sexual Harassment",
+    "stalking": "Stalking",
+    "cyber stalking": "Cyber Stalking",
+    "domestic violence": "Domestic Violence",
+    "dowry": "Dowry Harassment",
+    "acid attack": "Acid Attack",
+    "chain snatch": "Chain Snatching",
+    "eve teasing": "Public Harassment",
+    "women safety": "Public Harassment",
+    "harassment of women": "Public Harassment",
+    "woman harassed": "Public Harassment",
+    "girl harassed": "Public Harassment",
+}
+
+
+def classify_women_safety_category(text: str, incident_type_str: str) -> Optional[str]:
+    """Derive women_safety_category from text or fallback to incident_type mapping."""
+    text_lower = text.lower()
+
+    # Check keyword overrides first (more specific)
+    for keyword, category in _WOMEN_SAFETY_KEYWORDS.items():
+        if keyword in text_lower:
+            return category
+
+    # Fallback: map incident_type to women_safety_category
+    return INCIDENT_TYPE_TO_WOMEN_SAFETY.get(incident_type_str.upper())
+
+
 def extract_date_from_text(text: str) -> Optional[str]:
     """Try to extract a date from article text."""
     # Match patterns like "on November 15, 2025" or "Nov 15, 2025" or "15 November 2025"
@@ -460,11 +499,19 @@ async def process_article(
     source = article.get("source", link)
     description = summary or title
 
+    # Derive women_safety_category
+    ws_cat = classify_women_safety_category(combined_text, itype.value)
+    ws_weight = None
+    if ws_cat and is_women_safety_category(ws_cat):
+        _tier, _risk_wt, ws_weight, _base_sev = get_women_safety_details(ws_cat)
+
     return {
         "title": title[:500],
         "description": description[:1000],
         "incident_type": itype.value,
         "severity": severity.value,
+        "women_safety_category": ws_cat,
+        "women_safety_weight": ws_weight,
         "confidence": round(confidence, 2),
         "latitude": round(lat, 6),
         "longitude": round(lng, 6),
@@ -593,6 +640,20 @@ async def run_collection(dry_run: bool = False) -> dict:
             saved_count = 0
             for inc in processed_incidents:
                 try:
+                    ws_cat = inc.get("women_safety_category")
+                    ws_weight = inc.get("women_safety_weight")
+                    meta = {}
+                    if ws_cat and is_women_safety_category(ws_cat):
+                        meta["women_safety_category"] = ws_cat
+                        meta["women_safety_weight"] = ws_weight
+                        # Map to correct IncidentType
+                        mapped_type = WOMEN_SAFETY_TO_INCIDENT_TYPE.get(ws_cat)
+                        if mapped_type:
+                            inc["incident_type"] = mapped_type
+                    else:
+                        meta["women_safety_category"] = None
+                        meta["women_safety_weight"] = None
+
                     incident = Incident(
                         incident_type=IncidentType(inc["incident_type"]),
                         severity=IncidentSeverity(inc["severity"]),
@@ -611,6 +672,7 @@ async def run_collection(dry_run: bool = False) -> dict:
                         source_url=inc["source_url"],
                         source_id=inc["source_id"],
                         ai_classified=True,
+                        meta_data=meta,
                     )
                     session.add(incident)
                     saved_count += 1

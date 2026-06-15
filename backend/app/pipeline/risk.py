@@ -1,10 +1,12 @@
 """
-Risk Scoring Engine — Simplified.
+Risk Scoring Engine — Women's Safety Edition.
 Pure math on PostGIS spatial queries. No AI.
+
+Only incidents with women_safety_category IS NOT NULL are scored.
+Recency weighting: recent incidents count more.
 """
 
 import logging
-import math
 from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import text
@@ -49,42 +51,66 @@ async def ensure_default_location() -> str:
 
 async def score_location(lat: float, lng: float, district: Optional[str] = None) -> dict:
     async with get_session_factory()() as session:
+        # Only count incidents with women_safety_category set
         hist = await session.execute(
             text("""
                 SELECT COUNT(*) as cnt,
-                       COALESCE(AVG(CASE
-                            WHEN UPPER(severity::text) = 'CRITICAL' THEN 50
-                            WHEN UPPER(severity::text) = 'HIGH' THEN 30
-                            WHEN UPPER(severity::text) = 'MEDIUM' THEN 15
-                            WHEN UPPER(severity::text) = 'LOW' THEN 5
-                           ELSE 10
-                       END), 0) as avg_sev
+                       COALESCE(AVG(
+                           COALESCE(
+                               (metadata->>'women_safety_weight')::float,
+                               CASE
+                                   WHEN UPPER(severity::text) = 'CRITICAL' THEN 100
+                                   WHEN UPPER(severity::text) = 'HIGH' THEN 70
+                                   WHEN UPPER(severity::text) = 'MEDIUM' THEN 40
+                                   WHEN UPPER(severity::text) = 'LOW' THEN 20
+                                   ELSE 10
+                               END
+                           )
+                       ), 0) as avg_wt
                 FROM incidents
                 WHERE ST_DWithin(
                     geom::geography,
                     ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
                     :radius
-                ) AND status::text != 'dismissed'
+                )
+                  AND metadata->>'women_safety_category' IS NOT NULL
+                  AND status::text != 'dismissed'
             """),
             {"lng": lng, "lat": lat, "radius": HISTORICAL_RADIUS_METERS},
         )
         hrow = hist.fetchone()
         hist_count = int(hrow[0]) if hrow else 0
-        hist_sev = float(hrow[1]) if hrow else 0.0
+        hist_wt = float(hrow[1]) if hrow else 0.0
 
+        # Recent incidents (7 days) with recency weight
         recent = await session.execute(
             text("""
-                SELECT COUNT(*) FROM incidents
+                SELECT COUNT(*) as cnt,
+                       COALESCE(AVG(
+                           COALESCE(
+                               (metadata->>'women_safety_weight')::float, 40.0
+                           ) * CASE
+                               WHEN created_at >= NOW() - INTERVAL '30 days' THEN 1.0
+                               WHEN created_at >= NOW() - INTERVAL '90 days' THEN 0.8
+                               WHEN created_at >= NOW() - INTERVAL '180 days' THEN 0.6
+                               ELSE 0.4
+                           END
+                       ), 0) as weighted_impact
+                FROM incidents
                 WHERE ST_DWithin(
                     geom::geography,
                     ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
                     :radius
-                ) AND created_at >= NOW() - INTERVAL '7 days'
-                AND status::text != 'dismissed'
+                )
+                  AND created_at >= NOW() - INTERVAL '7 days'
+                  AND metadata->>'women_safety_category' IS NOT NULL
+                  AND status::text != 'dismissed'
             """),
             {"lng": lng, "lat": lat, "radius": RECENT_RADIUS_METERS},
         )
-        recent_count = int(recent.scalar() or 0)
+        rrow = recent.fetchone()
+        recent_count = int(rrow[0]) if rrow else 0
+        recent_weighted_impact = float(rrow[1]) if rrow else 0.0
 
         police = await session.execute(
             text("""
@@ -112,13 +138,14 @@ async def score_location(lat: float, lng: float, district: Optional[str] = None)
         )
         hospital_count = int(hospitals.scalar() or 0)
 
-    # Calculate historical risk
+    # Calculate historical risk from women-safety incidents
     density_factor = min(1.0, hist_count / 50.0)
-    severity_factor = hist_sev / 50.0 if hist_sev > 0 else 0
+    severity_factor = hist_wt / 100.0 if hist_wt > 0 else 0
     historical_risk = (density_factor * 0.6 + severity_factor * 0.4) * 100.0
 
-    # Recent reports impact
-    recent_impact = min(30.0, recent_count * 8.0)
+    # Recent reports impact (recency-weighted)
+    recent_impact = min(30.0, recent_count * 6.0)
+    recency_bonus = min(20.0, recent_weighted_impact * 2.0)
 
     # Night factor
     current_hour = datetime.now(timezone.utc).hour
@@ -130,15 +157,16 @@ async def score_location(lat: float, lng: float, district: Optional[str] = None)
     hospital_bonus = min(5.0, hospital_count * 1.67)
     safety_bonus = police_bonus + hospital_bonus
 
-    # Severity penalty from recent incidents
+    # Severity penalty from recent women-safety incidents (weighted)
     sev_penalty = 0.0
     if recent_count > 0:
-        sev_penalty = min(25.0, recent_count * 3.0)
+        sev_penalty = min(25.0, recent_weighted_impact * 0.3)
 
     # Final score
     raw_score = (
         historical_risk * HISTORICAL_RISK_WEIGHT
         + recent_impact * 0.2
+        + recency_bonus * 0.1
         + night_penalty * 0.15
         + sev_penalty * 0.15
         - safety_bonus * 0.1
@@ -156,7 +184,9 @@ async def score_location(lat: float, lng: float, district: Optional[str] = None)
 
     factors = {
         "historical_risk": round(historical_risk, 2),
+        "women_safety_incident_count": hist_count,
         "recent_impact": round(recent_impact, 2),
+        "recency_weighted_impact": round(recent_weighted_impact, 2),
         "night_penalty": round(night_penalty, 2),
         "severity_penalty": round(sev_penalty, 2),
         "police_presence_bonus": round(police_bonus, 2),
@@ -173,7 +203,12 @@ async def recalculate_all_risk_scores() -> dict:
     location_id = await ensure_default_location()
     async with get_session_factory()() as session:
         result = await session.execute(
-            text("SELECT DISTINCT latitude, longitude FROM incidents WHERE latitude IS NOT NULL")
+            text("""
+                SELECT DISTINCT latitude, longitude
+                FROM incidents
+                WHERE latitude IS NOT NULL
+                  AND metadata->>'women_safety_category' IS NOT NULL
+            """)
         )
         points = result.fetchall()
     if not points:

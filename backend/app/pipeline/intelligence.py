@@ -21,6 +21,10 @@ from app.models.incident import (
     Incident, IncidentType, IncidentSeverity,
     IncidentSource, IncidentStatus,
 )
+from app.pipeline.women_safety import (
+    WOMEN_SAFETY_CATEGORIES, WOMEN_SAFETY_TO_INCIDENT_TYPE,
+    get_women_safety_details, is_women_safety_category,
+)
 from app.services.gemini import gemini_service, GeminiQuotaExceeded
 from app.services.news_scraper import NewsScraper
 from app.services.nominatim import NominatimService
@@ -107,24 +111,30 @@ async def extract_incidents_from_article(article: dict) -> List[dict]:
     text_content = article.get("full_text", "")
     if not text_content or len(text_content) < 50:
         return []
+    categories_list = sorted(WOMEN_SAFETY_CATEGORIES.keys())
     prompt = (
-        "Extract safety incidents from this news article. "
+        "Extract WOMEN'S SAFETY incidents from this news article. "
+        "ONLY extract incidents relevant to women's safety (crimes against women/girls). "
+        "Skip generic crimes like theft, fraud, accidents, riots, vandalism.\n\n"
         "Return a JSON array of objects with these fields:\n"
         f"- incident_type: one of [{', '.join(_INCIDENT_TYPES)}]\n"
         "- severity: one of [low, medium, high, critical]\n"
+        "- women_safety_category: one of [" + ", ".join(categories_list) + "]\n"
         "- location: the specific location name mentioned\n"
         "- district: the Karnataka district\n"
         "- city: the city name\n"
         "- description: brief description (max 200 chars)\n"
         "- confidence: float 0.0-1.0\n"
         "- incident_date: the date in YYYY-MM-DD format if mentioned, else null\n\n"
+        "IMPORTANT: women_safety_category is REQUIRED. Pick the most specific match.\n"
+        "If an incident is NOT a women's safety crime, EXCLUDE it entirely.\n\n"
         "If no valid incidents are found, return an empty array [].\n\n"
         f"Title: {article.get('title', '')}\n"
         f"Text: {text_content[:6000]}"
     )
     system = (
-        "You are a safety incident extraction AI for Karnataka, India. "
-        "Extract structured incident data from news articles. "
+        "You are a women's safety incident extraction AI for Karnataka, India. "
+        "ONLY extract crimes against women and girls. Exclude all other crime types. "
         "Return ONLY valid JSON. No markdown, no explanations."
     )
     response = gemini_service.generate(prompt, system_instruction=system)
@@ -289,6 +299,33 @@ async def save_incidents(incidents: List[dict]) -> dict:
                 except ValueError:
                     severity = IncidentSeverity.MEDIUM
                 confidence = max(0.0, min(1.0, float(inc.get("confidence", 0.7))))
+
+                # Women-safety category handling
+                ws_cat = inc.get("women_safety_category", "")
+                ws_details = None
+                meta = {}
+                if ws_cat and is_women_safety_category(ws_cat):
+                    tier, risk_weight, sev_weight, base_sev = get_women_safety_details(ws_cat)
+                    ws_details = {"women_safety_category": ws_cat, "women_safety_weight": sev_weight}
+                    meta["women_safety_category"] = ws_cat
+                    meta["women_safety_weight"] = sev_weight
+                    meta["women_safety_tier"] = tier
+                    # Override incident_type from the women_safety mapping for consistency
+                    mapped_type = WOMEN_SAFETY_TO_INCIDENT_TYPE.get(ws_cat)
+                    if mapped_type:
+                        try:
+                            itype = IncidentType(mapped_type)
+                        except ValueError:
+                            pass
+                    # Override severity based on tier
+                    if tier == 1:
+                        severity = IncidentSeverity.CRITICAL
+                    elif tier == 2:
+                        severity = IncidentSeverity.HIGH
+                else:
+                    meta["women_safety_category"] = None
+                    meta["women_safety_weight"] = None
+
                 incident = Incident(
                     incident_type=itype,
                     severity=severity,
@@ -306,6 +343,7 @@ async def save_incidents(incidents: List[dict]) -> dict:
                     incident_date=datetime.now(timezone.utc),
                     source_url=source_url,
                     ai_classified=True,
+                    meta_data=meta,
                 )
                 session.add(incident)
                 saved += 1

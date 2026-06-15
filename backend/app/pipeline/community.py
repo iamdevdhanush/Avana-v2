@@ -18,6 +18,10 @@ from app.models.incident import (
     Incident, IncidentType, IncidentSeverity,
     IncidentStatus, IncidentSource,
 )
+from app.pipeline.women_safety import (
+    WOMEN_SAFETY_CATEGORIES, WOMEN_SAFETY_TO_INCIDENT_TYPE,
+    get_women_safety_details, is_women_safety_category,
+)
 from app.services.gemini import gemini_service
 from geoalchemy2.elements import WKTElement
 
@@ -92,11 +96,14 @@ async def process_pending_reports() -> dict:
             classified.append(report)
             continue
 
+        categories_list = sorted(WOMEN_SAFETY_CATEGORIES.keys())
         prompt = (
-            "Validate this community safety report. Return JSON:\n"
+            "Validate this community WOMEN'S SAFETY report. Return JSON:\n"
             '{"validated_type": "incident_type", "validated_severity": "LOW|MEDIUM|HIGH|CRITICAL", '
             '"location_coherent": true/false, "description_valid": true/false, '
+            '"women_safety_category": "one of [' + ", ".join(categories_list) + '] or null", '
             '"confidence_adjustment": -0.3 to 0.3, "notes": "..."}\n\n'
+            "If this is NOT a women's safety incident, set women_safety_category to null.\n\n"
             f"Reported type: {report.get('incident_type', 'unknown')}\n"
             f"Severity: {report.get('severity', 'unknown')}\n"
             f"Location: ({report.get('latitude')}, {report.get('longitude')})\n"
@@ -231,6 +238,31 @@ async def process_pending_reports() -> dict:
                     except ValueError:
                         severity = IncidentSeverity.MEDIUM
 
+                    # Women-safety category handling
+                    ws_cat = report.get("women_safety_category", "")
+                    meta = {}
+                    if ws_cat and is_women_safety_category(ws_cat):
+                        tier, risk_weight, sev_weight, base_sev = get_women_safety_details(ws_cat)
+                        meta["women_safety_category"] = ws_cat
+                        meta["women_safety_weight"] = sev_weight
+                        meta["women_safety_tier"] = tier
+                        # Map to correct IncidentType for consistency
+                        mapped_type = WOMEN_SAFETY_TO_INCIDENT_TYPE.get(ws_cat)
+                        if mapped_type:
+                            try:
+                                itype = IncidentType(mapped_type)
+                            except ValueError:
+                                pass
+                        if tier == 1:
+                            severity = IncidentSeverity.CRITICAL
+                        elif tier == 2:
+                            severity = IncidentSeverity.HIGH
+                    else:
+                        # No valid women-safety category — mark as excluded
+                        meta["women_safety_category"] = None
+                        meta["women_safety_weight"] = None
+                        logger.warning(f"[COMMUNITY_PIPELINE] Report {report['id']} has no women_safety_category — excluded from risk/heatmap")
+
                     incident = Incident(
                         incident_type=itype,
                         severity=severity,
@@ -243,6 +275,7 @@ async def process_pending_reports() -> dict:
                         description=(report.get("description") or "")[:500],
                         incident_date=datetime.now(timezone.utc),
                         ai_classified=True,
+                        meta_data=meta,
                     )
                     session.add(incident)
                     logger.info(f"[COMMUNITY_PIPELINE] DB write: incident created from report {report['id']}")

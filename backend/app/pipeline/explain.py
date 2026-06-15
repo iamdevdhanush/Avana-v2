@@ -73,6 +73,8 @@ async def explain_risk(
                     if not isinstance(raw_meta, dict):
                         raw_meta = {}
 
+                    women_safety_cat = raw_meta.get("women_safety_category") if isinstance(raw_meta, dict) else None
+
                     item: dict = {
                         "title": str(r[4]) if r[4] else None,
                         "incident_type": str(r[1]),
@@ -85,6 +87,7 @@ async def explain_risk(
                         "dataset_name": None,
                         "dataset_year": None,
                         "dataset_district": None,
+                        "women_safety_category": women_safety_cat,
                     }
 
                     if raw_source.upper() == "NEWS":

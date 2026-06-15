@@ -165,6 +165,26 @@ async def ingest_to_incidents(batch_id: Optional[str] = None) -> int:
             dt = datetime(rec.year, rec.month or 1, 1, tzinfo=timezone.utc)
             geom = WKTElement(f"POINT({lng} {lat})", srid=4326)
 
+            # Determine women_safety_category from the crime type
+            from app.pipeline.crime_stat_normalizer import resolve_women_safety_category as _resolve_ws
+            ws_cat = _resolve_ws(rec.crime_type)
+            ws_weight = None
+            if ws_cat:
+                from app.pipeline.women_safety import get_women_safety_details
+                _tier, _risk_wt, ws_weight, _base_sev = get_women_safety_details(ws_cat)
+
+            meta = {
+                "crime_stat_id": str(rec.id),
+                "crime_count": rec.crime_count,
+                "crime_type_raw": rec.crime_type,
+                "crime_category": rec.crime_category,
+                "women_safety_category": ws_cat,
+                "women_safety_weight": ws_weight,
+                "source": "karnataka_police_etl",
+                "batch_id": rec.ingestion_batch,
+                "ingestion_timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
             incident = Incident(
                 incident_type=_to_incident_type(rec.crime_category),
                 severity=severity,
@@ -181,15 +201,7 @@ async def ingest_to_incidents(batch_id: Optional[str] = None) -> int:
                 incident_date=dt,
                 source_id=f"crime_stat_{rec.id}",
                 source_url=None,
-                meta_data={
-                    "crime_stat_id": str(rec.id),
-                    "crime_count": rec.crime_count,
-                    "crime_type_raw": rec.crime_type,
-                    "crime_category": rec.crime_category,
-                    "source": "karnataka_police_etl",
-                    "batch_id": rec.ingestion_batch,
-                    "ingestion_timestamp": datetime.now(timezone.utc).isoformat(),
-                },
+                meta_data=meta,
                 ai_classified=False,
                 user_id=None,
             )
