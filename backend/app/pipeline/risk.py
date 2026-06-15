@@ -200,7 +200,6 @@ async def score_location(lat: float, lng: float, district: Optional[str] = None)
 
 
 async def recalculate_all_risk_scores() -> dict:
-    location_id = await ensure_default_location()
     async with get_session_factory()() as session:
         result = await session.execute(
             text("""
@@ -224,11 +223,10 @@ async def recalculate_all_risk_scores() -> dict:
                     await session.execute(
                         text("""
                             INSERT INTO risk_scores
-                                (id, location_id, latitude, longitude, score, category,
+                                (id, latitude, longitude, score, category,
                                  metadata, calculated_at, created_at)
                             VALUES (
                                 gen_random_uuid(),
-                                :location_id,
                                 :lat, :lng, :score, :cat,
                                 '{}'::jsonb, NOW(), NOW()
                             )
@@ -238,7 +236,7 @@ async def recalculate_all_risk_scores() -> dict:
                                 category = EXCLUDED.category,
                                 calculated_at = NOW()
                         """),
-                        {"lat": lat, "lng": lng, "score": result["score"], "cat": result["category"], "location_id": location_id},
+                        {"lat": lat, "lng": lng, "score": result["score"], "cat": result["category"]},
                     )
                     await session.commit()
                     updated += 1

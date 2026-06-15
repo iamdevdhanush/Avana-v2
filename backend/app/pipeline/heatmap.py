@@ -5,7 +5,7 @@ from typing import List, Tuple
 from sqlalchemy import text
 
 from app.database import get_session_factory
-from app.pipeline.risk import score_location, ensure_default_location
+from app.pipeline.risk import score_location
 
 logger = logging.getLogger(__name__)
 
@@ -247,7 +247,6 @@ async def generate_heatmap_for_bounds(
                 })
 
     logger.info(f"[HEATMAP_START] Inserting {len(all_results)} heatmap points into risk_scores")
-    location_id = await ensure_default_location()
     factory = get_session_factory()
     async with factory() as session:
         failures = 0
@@ -257,11 +256,10 @@ async def generate_heatmap_for_bounds(
                 await session.execute(
                     text("""
                         INSERT INTO risk_scores
-                            (id, location_id, latitude, longitude, score, category,
+                            (id, latitude, longitude, score, category,
                              metadata, calculated_at, created_at)
                         VALUES (
                             gen_random_uuid(),
-                            :location_id,
                             :lat, :lng, :score, :cat,
                             '{}'::jsonb, NOW(), NOW()
                         )
@@ -272,8 +270,7 @@ async def generate_heatmap_for_bounds(
                             calculated_at = NOW()
                     """),
                     {"lat": r["latitude"], "lng": r["longitude"],
-                     "score": r["score"], "cat": r["category"],
-                     "location_id": location_id},
+                     "score": r["score"], "cat": r["category"]},
                 )
             except Exception as e:
                 failures += 1

@@ -96,8 +96,6 @@ async def _bootstrap_heatmap_data():
         logger.error(f"[BOOTSTRAP] Pipeline failed: {e} — falling back to direct seed")
 
     logger.info("[BOOTSTRAP] Seeding risk_scores directly with Karnataka city data")
-    from app.pipeline.risk import ensure_default_location
-    location_id = await ensure_default_location()
     cities = [
         (12.9716, 77.5946, 65.0, "HIGH_RISK"),
         (12.2958, 76.6394, 45.0, "MODERATE"),
@@ -116,11 +114,10 @@ async def _bootstrap_heatmap_data():
                 await session.execute(
                     text("""
                         INSERT INTO risk_scores
-                            (id, location_id, latitude, longitude, score, category,
+                            (id, latitude, longitude, score, category,
                              metadata, calculated_at, created_at)
                         VALUES (
                             gen_random_uuid(),
-                            :location_id,
                             :lat, :lng, :score, :cat,
                             '{}'::jsonb, NOW(), NOW()
                         )
@@ -130,7 +127,7 @@ async def _bootstrap_heatmap_data():
                             category = EXCLUDED.category,
                             calculated_at = NOW()
                     """),
-                    {"lat": lat, "lng": lng, "score": score, "cat": category, "location_id": location_id},
+                    {"lat": lat, "lng": lng, "score": score, "cat": category},
                 )
             except Exception as e:
                 logger.warning(f"[BOOTSTRAP] Failed to insert ({lat}, {lng}): {e}")
