@@ -247,6 +247,8 @@ async def generate_heatmap_for_bounds(
                 })
 
     logger.info(f"[HEATMAP_START] Inserting {len(all_results)} heatmap points into risk_scores")
+    from app.pipeline.risk import ensure_default_location
+    loc_id = await ensure_default_location()
     factory = get_session_factory()
     async with factory() as session:
         failures = 0
@@ -257,11 +259,11 @@ async def generate_heatmap_for_bounds(
                     await session.execute(
                         text("""
                             INSERT INTO risk_scores
-                                (id, latitude, longitude, score, category,
+                                (id, location_id, latitude, longitude, score, category,
                                  metadata, calculated_at, created_at)
                             VALUES (
                                 gen_random_uuid(),
-                                :lat, :lng, :score, :cat,
+                                :location_id, :lat, :lng, :score, :cat,
                                 '{}'::jsonb, NOW(), NOW()
                             )
                             ON CONFLICT (latitude, longitude)
@@ -271,7 +273,8 @@ async def generate_heatmap_for_bounds(
                                 calculated_at = NOW()
                         """),
                         {"lat": r["latitude"], "lng": r["longitude"],
-                         "score": r["score"], "cat": r["category"]},
+                         "score": r["score"], "cat": r["category"],
+                         "location_id": loc_id},
                     )
             except Exception as e:
                 failures += 1

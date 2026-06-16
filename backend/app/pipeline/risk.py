@@ -213,6 +213,7 @@ async def recalculate_all_risk_scores() -> dict:
     if not points:
         return {"status": "no_data"}
     total = len(points)
+    loc_id = await ensure_default_location()
     updated = 0
     errors = 0
     for lat, lng in points:
@@ -223,11 +224,11 @@ async def recalculate_all_risk_scores() -> dict:
                     await session.execute(
                         text("""
                             INSERT INTO risk_scores
-                                (id, latitude, longitude, score, category,
+                                (id, location_id, latitude, longitude, score, category,
                                  metadata, calculated_at, created_at)
                             VALUES (
                                 gen_random_uuid(),
-                                :lat, :lng, :score, :cat,
+                                :location_id, :lat, :lng, :score, :cat,
                                 '{}'::jsonb, NOW(), NOW()
                             )
                             ON CONFLICT (latitude, longitude)
@@ -236,7 +237,7 @@ async def recalculate_all_risk_scores() -> dict:
                                 category = EXCLUDED.category,
                                 calculated_at = NOW()
                         """),
-                        {"lat": lat, "lng": lng, "score": result["score"], "cat": result["category"]},
+                        {"lat": lat, "lng": lng, "score": result["score"], "cat": result["category"], "location_id": loc_id},
                     )
                     await session.commit()
                     updated += 1
