@@ -253,33 +253,29 @@ async def generate_heatmap_for_bounds(
         MAX_HEATMAP_FAILURES = 10
         for idx, r in enumerate(all_results):
             try:
-                await session.execute(
-                    text("""
-                        INSERT INTO risk_scores
-                            (id, latitude, longitude, score, category,
-                             metadata, calculated_at, created_at)
-                        VALUES (
-                            gen_random_uuid(),
-                            :lat, :lng, :score, :cat,
-                            '{}'::jsonb, NOW(), NOW()
-                        )
-                        ON CONFLICT (latitude, longitude)
-                        DO UPDATE SET
-                            score = :score,
-                            category = :cat,
-                            calculated_at = NOW()
-                    """),
-                    {"lat": r["latitude"], "lng": r["longitude"],
-                     "score": r["score"], "cat": r["category"]},
-                )
+                async with session.begin_nested():
+                    await session.execute(
+                        text("""
+                            INSERT INTO risk_scores
+                                (id, latitude, longitude, score, category,
+                                 metadata, calculated_at, created_at)
+                            VALUES (
+                                gen_random_uuid(),
+                                :lat, :lng, :score, :cat,
+                                '{}'::jsonb, NOW(), NOW()
+                            )
+                            ON CONFLICT (latitude, longitude)
+                            DO UPDATE SET
+                                score = :score,
+                                category = :cat,
+                                calculated_at = NOW()
+                        """),
+                        {"lat": r["latitude"], "lng": r["longitude"],
+                         "score": r["score"], "cat": r["category"]},
+                    )
             except Exception as e:
                 failures += 1
                 logger.error(f"[HEATMAP_POINT_FAILED] ({r['latitude']}, {r['longitude']}): {e}")
-                try:
-                    await session.rollback()
-                    logger.info(f"[HEATMAP_ROLLBACK] Transaction rolled back after failure #{failures}")
-                except Exception as rb_e:
-                    logger.error(f"[HEATMAP_ROLLBACK] Rollback itself failed: {rb_e}")
                 if failures >= MAX_HEATMAP_FAILURES:
                     logger.error(f"[HEATMAP_ABORTED] {failures} consecutive insert failures — aborting")
                     return {

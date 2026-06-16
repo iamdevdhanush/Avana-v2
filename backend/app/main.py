@@ -53,10 +53,74 @@ async def lifespan(app: FastAPI):
     except Exception as diag_err:
         logger.warning(f"[GEMINI_DIAG] diagnostic failed: {diag_err}")
 
+    await _run_alembic_migrations()
+    await _ensure_risk_scores_constraint()
     asyncio.create_task(_bootstrap_heatmap_data())
 
     yield
     logger.info("Shutting down")
+
+
+async def _run_alembic_migrations():
+    import os
+    import sys
+    backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    logger.info("[MIGRATE] Running pending database migrations...")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "alembic", "upgrade", "head",
+            cwd=backend_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode == 0:
+            logger.info(f"[MIGRATE] Migrations applied successfully")
+        else:
+            logger.warning(f"[MIGRATE] Alembic exit code {proc.returncode}: {stderr.decode().strip()}")
+    except Exception as e:
+        logger.warning(f"[MIGRATE] Failed to run migrations: {e}")
+
+
+async def _ensure_risk_scores_constraint():
+    from sqlalchemy import text
+    from app.database import get_engine
+    try:
+        engine = get_engine()
+        async with engine.connect() as conn:
+            table_exists = await conn.execute(text("""
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'risk_scores'
+            """))
+            if table_exists.fetchone() is None:
+                logger.info("[SCHEMA] risk_scores table does not exist yet — skipping constraint check")
+                return
+        async with engine.begin() as conn:
+            result = await conn.execute(text("""
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'uq_risk_scores_lat_lng'
+                  AND conrelid = 'risk_scores'::regclass
+            """))
+            if result.fetchone() is None:
+                logger.info("[SCHEMA] Missing uq_risk_scores_lat_lng — creating now")
+                await conn.execute(text("""
+                    DELETE FROM risk_scores
+                    WHERE id NOT IN (
+                        SELECT DISTINCT ON (latitude, longitude) id
+                        FROM risk_scores
+                        ORDER BY latitude, longitude, calculated_at DESC NULLS LAST
+                    )
+                """))
+                await conn.execute(text("""
+                    ALTER TABLE risk_scores
+                    ADD CONSTRAINT uq_risk_scores_lat_lng
+                    UNIQUE (latitude, longitude)
+                """))
+                logger.info("[SCHEMA] Created unique constraint uq_risk_scores_lat_lng")
+            else:
+                logger.info("[SCHEMA] Constraint uq_risk_scores_lat_lng already exists")
+    except Exception as e:
+        logger.error(f"[SCHEMA] Failed to ensure constraint: {e}")
 
 
 async def _bootstrap_heatmap_data():
@@ -121,17 +185,19 @@ async def _bootstrap_heatmap_data():
                             :lat, :lng, :score, :cat,
                             '{}'::jsonb, NOW(), NOW()
                         )
-                        ON CONFLICT (latitude, longitude)
-                        DO UPDATE SET
-                            score = EXCLUDED.score,
-                            category = EXCLUDED.category,
-                            calculated_at = NOW()
                     """),
                     {"lat": lat, "lng": lng, "score": score, "cat": category},
                 )
             except Exception as e:
                 logger.warning(f"[BOOTSTRAP] Failed to insert ({lat}, {lng}): {e}")
-        await session.commit()
+                try:
+                    await session.rollback()
+                except Exception:
+                    pass
+        try:
+            await session.commit()
+        except Exception as e:
+            logger.error(f"[BOOTSTRAP] Commit failed: {e}")
     logger.info(f"[BOOTSTRAP] Seeded {len(cities)} direct risk_score entries")
 
 
