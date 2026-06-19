@@ -678,7 +678,16 @@ async def debug_data_integrity(
     # Mock mode status
     from app.config import settings
     result["mock_mode_enabled"] = settings.MOCK_INTELLIGENCE_MODE
-    result["gemini_available"] = not bool(settings.GEMINI_API_KEY and len(settings.GEMINI_API_KEY) >= 10)
+
+    # Real Gemini service status
+    from app.services.gemini import gemini_service
+    gs_status = gemini_service.get_status()
+    result["gemini_key_configured"] = bool(settings.GEMINI_API_KEY and len(settings.GEMINI_API_KEY) >= 10)
+    result["gemini_key_length"] = len(settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else 0
+    result["gemini_status"] = gs_status.get("status", "unknown")
+    result["gemini_error"] = gs_status.get("error")
+    result["gemini_init_error"] = getattr(gemini_service, '_init_error', None)
+    result["gemini_quota_cooldown"] = gs_status.get("retry_after_seconds", 0) if gs_status.get("status") == "QUOTA_EXCEEDED" else 0
 
     # Incident counts
     total_inc = await db.execute(text("SELECT COUNT(*) FROM incidents"))

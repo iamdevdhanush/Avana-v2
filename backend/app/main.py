@@ -44,13 +44,18 @@ async def lifespan(app: FastAPI):
         from app.services.gemini import gemini_service as gs
         import google.generativeai as genai
         sd = gs.get_status()
+        init_err = getattr(gs, '_init_error', None)
         logger.info(
             f"[GEMINI_DIAG] enabled={bool(settings.GEMINI_API_KEY)} "
             f"key_present={bool(settings.GEMINI_API_KEY and len(settings.GEMINI_API_KEY) >= 10)} "
+            f"key_length={len(settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else 0} "
             f"sdk=google-generativeai-{genai.__version__} "
             f"auth_method=api_key (genai.configure) "
-            f"status={sd.get('status', 'unknown')}"
+            f"status={sd.get('status', 'unknown')} "
+            f"init_error={init_err}"
         )
+        if sd.get("status") != "ONLINE":
+            logger.warning(f"[GEMINI_DIAG] Gemini NOT available: status={sd.get('status')} error={sd.get('error')} init_error={init_err}")
     except Exception as diag_err:
         logger.warning(f"[GEMINI_DIAG] diagnostic failed: {diag_err}")
 

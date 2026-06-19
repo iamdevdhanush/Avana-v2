@@ -37,27 +37,34 @@ class GeminiService:
     def _init(self):
         from app.config import settings
         api_key = settings.GEMINI_API_KEY
+        logger.info(f"[GEMINI_INIT] Starting Gemini init. Key present: {bool(api_key)}")
         if not api_key:
             self._available = False
             self._init_error = "GEMINI_API_KEY not configured"
-            logger.warning(self._init_error)
+            logger.warning(f"[GEMINI_INIT] {self._init_error}")
             return
-        if len(api_key) < 10:
+        key_len = len(api_key)
+        logger.info(f"[GEMINI_INIT] Key length: {key_len}, prefix: {api_key[:6]}...")
+        if key_len < 10:
             self._available = False
-            self._init_error = "GEMINI_API_KEY appears too short"
-            logger.error(self._init_error)
+            self._init_error = f"GEMINI_API_KEY appears too short (len={key_len})"
+            logger.error(f"[GEMINI_INIT] {self._init_error}")
             return
         try:
             import google.generativeai as genai
+            logger.info(f"[GEMINI_INIT] Calling genai.configure() with API key (prefix={api_key[:6]}...)")
             genai.configure(api_key=api_key)
+            logger.info(f"[GEMINI_INIT] genai.configure() succeeded")
             self.model = genai.GenerativeModel("gemini-2.0-flash")
+            logger.info(f"[GEMINI_INIT] model created successfully")
             self.api_key = api_key
             self._available = True
-            logger.info("Gemini service initialized successfully")
+            logger.info("[GEMINI_INIT] Gemini service initialized successfully — ONLINE")
         except Exception as e:
             self._available = False
-            self._init_error = f"Gemini init failed: {e}"
-            logger.error(self._init_error)
+            err_msg = f"Gemini init failed: {type(e).__name__}: {e}"
+            self._init_error = err_msg
+            logger.error(f"[GEMINI_INIT] {err_msg}")
 
     def is_available(self) -> bool:
         if self._quota_until and time.time() < self._quota_until:
@@ -74,6 +81,8 @@ class GeminiService:
     def get_status(self) -> dict:
         status = {
             "model": "gemini-2.0-flash" if self._available else None,
+            "has_api_key": bool(self.api_key),
+            "init_error_detail": self._init_error,
         }
         if self._quota_until and time.time() < self._quota_until:
             remaining = int(self._quota_until - time.time())
