@@ -165,12 +165,14 @@ async def geocode_incidents(incidents: List[dict]) -> List[dict]:
     nominatim = NominatimService()
     cache_hits = 0
     cache_misses = 0
+    existing_coords_kept = 0
     factory = get_session_factory()
     async with factory() as session:
         try:
             for inc in incidents:
+                had_coords = inc.get("latitude") is not None and inc.get("longitude") is not None
                 location_str = inc.get("location", "")
-                if not location_str:
+                if not location_str and not had_coords:
                     inc["latitude"] = None
                     inc["longitude"] = None
                     continue
@@ -207,27 +209,28 @@ async def geocode_incidents(incidents: List[dict]) -> List[dict]:
                             {"q": query, "lat": inc["latitude"], "lng": inc["longitude"], "dn": inc.get("display_name", "")},
                         )
                     else:
-                        # Fallback: attempt google-style reverse geocode or extract from location string
-                        import re
-                        coord_pattern = re.compile(r'([-+]?\d+\.?\d*)\s*[,/]\s*([-+]?\d+\.?\d*)')
-                        match = coord_pattern.search(location_str)
-                        if match:
-                            inc["latitude"] = float(match.group(1))
-                            inc["longitude"] = float(match.group(2))
-                            logger.info(f"[GEOCODE] Fallback extracted coords from location string: lat={inc['latitude']}, lng={inc['longitude']}")
+                        if had_coords:
+                            existing_coords_kept += 1
+                            logger.info(f"[GEOCODE] Nominatim failed for '{location_str}' — preserving existing coords ({inc['latitude']}, {inc['longitude']})")
                         else:
                             inc["latitude"] = None
                             inc["longitude"] = None
                 except Exception as e:
                     logger.warning(f"Geocode failed for '{location_str}': {e}")
-                    inc["latitude"] = None
-                    inc["longitude"] = None
+                    if not had_coords:
+                        inc["latitude"] = None
+                        inc["longitude"] = None
+                    else:
+                        existing_coords_kept += 1
+                        logger.info(f"[GEOCODE] Exception for '{location_str}' — preserving existing coords ({inc['latitude']}, {inc['longitude']})")
             await session.commit()
         finally:
             await nominatim.aclose()
     total = cache_hits + cache_misses
     if total > 0:
         logger.info(f"Geocoding cache: {cache_hits}/{total} hits ({cache_hits/total*100:.1f}%)")
+    if existing_coords_kept > 0:
+        logger.info(f"[GEOCODE] Preserved existing coordinates for {existing_coords_kept} incidents (Nominatim unavailable)")
     return incidents
 
 

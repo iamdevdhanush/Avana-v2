@@ -665,3 +665,103 @@ async def debug_heatmap_state(
         result["last_pipeline_run"] = None
 
     return result
+
+
+@router.get("/debug/data-integrity")
+async def debug_data_integrity(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Diagnostic endpoint: dump exact incident vs risk_score state per user request."""
+    result = {}
+
+    # Mock mode status
+    from app.config import settings
+    result["mock_mode_enabled"] = settings.MOCK_INTELLIGENCE_MODE
+    result["gemini_available"] = not bool(settings.GEMINI_API_KEY and len(settings.GEMINI_API_KEY) >= 10)
+
+    # Incident counts
+    total_inc = await db.execute(text("SELECT COUNT(*) FROM incidents"))
+    result["incidents_total"] = total_inc.scalar() or 0
+
+    geocoded = await db.execute(text("SELECT COUNT(*) FROM incidents WHERE latitude IS NOT NULL AND longitude IS NOT NULL"))
+    result["incidents_geocoded"] = geocoded.scalar() or 0
+
+    missing = await db.execute(text("SELECT COUNT(*) FROM incidents WHERE latitude IS NULL OR longitude IS NULL"))
+    result["incidents_missing_coords"] = missing.scalar() or 0
+
+    ws = await db.execute(text("SELECT COUNT(*) FROM incidents WHERE metadata->>'women_safety_category' IS NOT NULL"))
+    result["incidents_with_women_safety"] = ws.scalar() or 0
+
+    no_ws = await db.execute(text("SELECT COUNT(*) FROM incidents WHERE metadata->>'women_safety_category' IS NULL"))
+    result["incidents_without_women_safety"] = no_ws.scalar() or 0
+
+    by_source = await db.execute(text("SELECT source, COUNT(*) FROM incidents GROUP BY source"))
+    result["incidents_by_source"] = {str(r[0]): int(r[1]) for r in by_source.fetchall()}
+
+    # Risk score counts
+    total_rs = await db.execute(text("SELECT COUNT(*) FROM risk_scores"))
+    result["risk_scores_total"] = total_rs.scalar() or 0
+
+    fresh_rs = await db.execute(text("SELECT COUNT(*) FROM risk_scores WHERE calculated_at >= NOW() - INTERVAL '48 hours'"))
+    result["risk_scores_recent_48h"] = fresh_rs.scalar() or 0
+
+    # Check if risk_scores come from real data or bootstrap
+    # Bootstrap points have specific hardcoded coords; real ones generated from incidents
+    bootstrap_coords = [
+        (12.9716, 77.5946), (12.2958, 76.6394), (12.9141, 74.8560),
+        (15.3647, 75.1240), (17.3290, 76.8344), (14.4419, 75.9172),
+        (15.8573, 74.5069), (15.8497, 74.4977), (13.3409, 74.7421),
+        (13.9299, 75.5681),
+    ]
+    for lat, lng in bootstrap_coords:
+        match_rs = await db.execute(
+            text("SELECT COUNT(*) FROM risk_scores WHERE ABS(latitude - :lat) < 0.001 AND ABS(longitude - :lng) < 0.001"),
+            {"lat": lat, "lng": lng},
+        )
+        if (match_rs.scalar() or 0) > 0:
+            result["risk_scores_source"] = "BOOTSTRAP_FALLBACK"
+            result["risk_scores_bootstrap_match"] = {"lat": lat, "lng": lng}
+            break
+    else:
+        result["risk_scores_source"] = "REAL_INCIDENTS"
+
+    # Sample 5 incidents
+    samples = await db.execute(text("""
+        SELECT id, incident_type, severity, latitude, longitude,
+               metadata->>'women_safety_category' as ws_cat,
+               district, city, source, created_at
+        FROM incidents ORDER BY created_at DESC LIMIT 5
+    """))
+    result["sample_incidents"] = []
+    for r in samples.fetchall():
+        result["sample_incidents"].append({
+            "id": str(r[0]),
+            "incident_type": str(r[1]),
+            "severity": str(r[2]),
+            "latitude": float(r[3]) if r[3] else None,
+            "longitude": float(r[4]) if r[4] else None,
+            "women_safety_category": str(r[5]) if r[5] else None,
+            "district": str(r[6]) if r[6] else None,
+            "city": str(r[7]) if r[7] else None,
+            "source": str(r[8]),
+            "created_at": r[9].isoformat() if r[9] else None,
+        })
+
+    # Sample 10 risk scores
+    rs_samples = await db.execute(text("""
+        SELECT latitude, longitude, score, category, calculated_at
+        FROM risk_scores ORDER BY calculated_at DESC LIMIT 10
+    """))
+    result["sample_risk_scores"] = [
+        {
+            "latitude": float(r[0]),
+            "longitude": float(r[1]),
+            "score": float(r[2]),
+            "category": str(r[3]),
+            "calculated_at": r[4].isoformat() if r[4] else None,
+        }
+        for r in rs_samples.fetchall()
+    ]
+
+    return result
