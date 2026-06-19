@@ -19,9 +19,10 @@ def get_engine():
         _engine = create_async_engine(
             url,
             echo=settings.DEBUG,
-            pool_size=5,
-            max_overflow=3,
+            pool_size=15,
+            max_overflow=5,
             pool_pre_ping=True,
+            pool_recycle=3600,
         )
     return _engine
 

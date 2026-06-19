@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from 'react'
+import { memo, useCallback, useEffect, useRef } from 'react'
 import {
   MapContainer,
   TileLayer,
@@ -100,6 +100,11 @@ export const SafetyMap = memo(function SafetyMap({
 }: SafetyMapProps) {
   const { center, zoom, setSelectedLocation } = useMapStore()
 
+  const handleHotspotClick = useCallback((lat: number, lng: number, w: number) => {
+    setSelectedLocation({ lat, lng })
+    onHotspotClick?.(lat, lng, w)
+  }, [setSelectedLocation, onHotspotClick])
+
   return (
     <MapContainer
       center={center}
@@ -120,10 +125,7 @@ export const SafetyMap = memo(function SafetyMap({
       {showHeatmap && heatmapPoints.length > 0 && (
         <HeatmapLayer
           points={heatmapPoints}
-          onHotspotClick={(lat, lng, w) => {
-            setSelectedLocation({ lat, lng })
-            onHotspotClick?.(lat, lng, w)
-          }}
+          onHotspotClick={handleHotspotClick}
         />
       )}
 

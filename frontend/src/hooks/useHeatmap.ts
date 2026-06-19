@@ -13,7 +13,7 @@ interface UseHeatmapReturn {
 }
 
 const cache = new Map<string, { data: HeatmapResponse; ts: number }>()
-const CACHE_TTL = 30_000
+const CACHE_TTL = 120_000
 const MIN_ZOOM_FOR_FETCH = 9
 
 function boundsKey(bounds: MapBounds, zoom: number): string {

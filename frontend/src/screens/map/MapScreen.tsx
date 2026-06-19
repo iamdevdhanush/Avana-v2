@@ -10,7 +10,10 @@ import { useHeatmap } from '@/hooks/useHeatmap'
 import { DataFreshness } from '@/components/DataFreshness'
 
 export function MapScreen() {
-  const { bounds, zoom, selectedLocation, setSelectedLocation } = useMapStore()
+  const bounds = useMapStore((s) => s.bounds)
+  const zoom = useMapStore((s) => s.zoom)
+  const selectedLocation = useMapStore((s) => s.selectedLocation)
+  const setSelectedLocation = useMapStore((s) => s.setSelectedLocation)
   const { position } = useGeolocation()
   const {
     points: heatmapPoints,

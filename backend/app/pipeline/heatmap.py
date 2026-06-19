@@ -19,6 +19,32 @@ def _estimate_grid_cells(sw_lat: float, sw_lng: float, ne_lat: float, ne_lng: fl
     return lat_cells * lng_cells
 
 
+def _split_bounds(
+    sw_lat: float, sw_lng: float, ne_lat: float, ne_lng: float,
+) -> List[Tuple[float, float, float, float]]:
+    cells = _estimate_grid_cells(sw_lat, sw_lng, ne_lat, ne_lng)
+    if cells <= MAX_GRID_CELLS:
+        return [(sw_lat, sw_lng, ne_lat, ne_lng)]
+    ratio = math.ceil(math.sqrt(cells / MAX_GRID_CELLS))
+    lat_step = (ne_lat - sw_lat) / ratio
+    lng_step = (ne_lng - sw_lng) / ratio
+    chunks = []
+    for i in range(ratio):
+        for j in range(ratio):
+            c_sw_lat = sw_lat + i * lat_step
+            c_ne_lat = sw_lat + (i + 1) * lat_step if i < ratio - 1 else ne_lat
+            c_sw_lng = sw_lng + j * lng_step
+            c_ne_lng = sw_lng + (j + 1) * lng_step if j < ratio - 1 else ne_lng
+            chunk_cells = _estimate_grid_cells(c_sw_lat, c_sw_lng, c_ne_lat, c_ne_lng)
+            if chunk_cells == 0:
+                continue
+            if chunk_cells > MAX_GRID_CELLS:
+                chunks.extend(_split_bounds(c_sw_lat, c_sw_lng, c_ne_lat, c_ne_lng))
+            else:
+                chunks.append((c_sw_lat, c_sw_lng, c_ne_lat, c_ne_lng))
+    return chunks
+
+
 async def compute_localized_bounds(buffer_degrees: float = 0.05, max_cells_per: int = 1000) -> List[Tuple[float, float, float, float]]:
     bounds_list: List[Tuple[float, float, float, float]] = []
     async with get_session_factory()() as session:
@@ -221,13 +247,20 @@ async def generate_heatmap_for_bounds(
     logger.info(f"[HEATMAP] Bounds: sw=({sw_lat:.4f},{sw_lng:.4f}) ne=({ne_lat:.4f},{ne_lng:.4f})")
 
     if estimated > MAX_GRID_CELLS:
-        logger.error(f"[HEATMAP] ABORT: {estimated} cells exceeds max {MAX_GRID_CELLS}")
-        return {
-            "error": f"Grid too large: {estimated} cells exceeds {MAX_GRID_CELLS} max",
-            "estimated_cells": estimated,
-            "max_cells": MAX_GRID_CELLS,
-            "bounds": {"sw_lat": sw_lat, "sw_lng": sw_lng, "ne_lat": ne_lat, "ne_lng": ne_lng},
-        }
+        chunks = _split_bounds(sw_lat, sw_lng, ne_lat, ne_lng)
+        logger.warning(f"[HEATMAP] Bounds exceed MAX_GRID_CELLS ({estimated} > {MAX_GRID_CELLS}) — splitting into {len(chunks)} chunks")
+        total_points = 0
+        chunk_errors = []
+        for i, (c_sw_lat, c_sw_lng, c_ne_lat, c_ne_lng) in enumerate(chunks):
+            logger.info(f"[HEATMAP] Chunk {i+1}/{len(chunks)}: ({c_sw_lat:.4f},{c_sw_lng:.4f}) to ({c_ne_lat:.4f},{c_ne_lng:.4f})")
+            chunk_result = await generate_heatmap_for_bounds(c_sw_lat, c_sw_lng, c_ne_lat, c_ne_lng, zoom)
+            if "error" in chunk_result:
+                chunk_errors.append(chunk_result["error"])
+            total_points += chunk_result.get("points_generated", 0)
+        result = {"points_generated": total_points, "chunks_used": len(chunks)}
+        if chunk_errors:
+            result["error"] = "; ".join(chunk_errors)
+        return result
 
     grid = _generate_grid(sw_lat, sw_lng, ne_lat, ne_lng)
     logger.info(f"Generating heatmap for {len(grid)} grid points")

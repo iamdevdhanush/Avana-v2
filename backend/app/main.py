@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError, DataError
@@ -161,53 +162,21 @@ async def _bootstrap_heatmap_data():
             logger.info(f"[BOOTSTRAP] Pipeline complete — {heat_count} heatmap points generated")
             return
 
-        logger.warning("[BOOTSTRAP] Pipeline produced no heatmap points — falling back to direct seed")
+            logger.warning("[BOOTSTRAP] Pipeline produced no heatmap points — attempting grid generation")
     except Exception as e:
-        logger.error(f"[BOOTSTRAP] Pipeline failed: {e} — falling back to direct seed")
+        logger.error(f"[BOOTSTRAP] Pipeline failed: {e} — attempting grid generation")
 
-    logger.info("[BOOTSTRAP] Seeding risk_scores directly with Karnataka city data")
-    from app.pipeline.risk import ensure_default_location
-    loc_id = await ensure_default_location()
-    cities = [
-        (12.9716, 77.5946, 65.0, "HIGH_RISK"),
-        (12.2958, 76.6394, 45.0, "MODERATE"),
-        (12.9141, 74.8560, 30.0, "MODERATE"),
-        (15.3647, 75.1240, 55.0, "HIGH_RISK"),
-        (17.3290, 76.8344, 40.0, "MODERATE"),
-        (14.4419, 75.9172, 35.0, "MODERATE"),
-        (15.8573, 74.5069, 20.0, "SAFE"),
-        (15.8497, 74.4977, 25.0, "SAFE"),
-        (13.3409, 74.7421, 15.0, "SAFE"),
-        (13.9299, 75.5681, 35.0, "MODERATE"),   # Shivamogga
-    ]
-    factory = get_session_factory()
-    async with factory() as session:
-        for lat, lng, score, category in cities:
-            try:
-                await session.execute(
-                    text("""
-                        INSERT INTO risk_scores
-                            (id, location_id, latitude, longitude, score, category,
-                             metadata, calculated_at, created_at)
-                        VALUES (
-                            gen_random_uuid(),
-                            :location_id, :lat, :lng, :score, :cat,
-                            '{}'::jsonb, NOW(), NOW()
-                        )
-                    """),
-                    {"lat": lat, "lng": lng, "score": score, "cat": category, "location_id": loc_id},
-                )
-            except Exception as e:
-                logger.warning(f"[BOOTSTRAP] Failed to insert ({lat}, {lng}): {e}")
-                try:
-                    await session.rollback()
-                except Exception:
-                    pass
-        try:
-            await session.commit()
-        except Exception as e:
-            logger.error(f"[BOOTSTRAP] Commit failed: {e}")
-    logger.info(f"[BOOTSTRAP] Seeded {len(cities)} direct risk_score entries")
+    logger.info("[BOOTSTRAP] Generating direct grid heatmap for Karnataka")
+    from app.pipeline.heatmap import generate_heatmap_for_bounds
+    from app.config import settings as cfg
+    bounds = [float(x) for x in cfg.KARNATAKA_BOUNDS.split(",")]
+    sw_lat, sw_lng, ne_lat, ne_lng = bounds[0], bounds[2], bounds[1], bounds[3]
+    grid_result = await generate_heatmap_for_bounds(sw_lat, sw_lng, ne_lat, ne_lng, zoom="state")
+    points = grid_result.get("points_generated", 0)
+    if points > 0:
+        logger.info(f"[BOOTSTRAP] Grid heatmap generated {points} points across {grid_result.get('chunks_used', 1)} chunk(s)")
+    else:
+        logger.error(f"[BOOTSTRAP] Grid heatmap generation failed: {grid_result.get('error', 'unknown')}")
 
 
 app = FastAPI(
@@ -231,6 +200,8 @@ app.add_middleware(
         "X-Process-Time",
     ],
 )
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.middleware("http")(rate_limit_middleware)
 
@@ -335,6 +306,50 @@ async def debug_env(admin: User = Depends(require_admin)):
         "DEBUG": settings.DEBUG,
         "CORS_ORIGINS": settings.CORS_ORIGINS,
     }
+
+
+@app.get("/health/deep")
+async def health_deep():
+    from app.database import get_engine
+    from sqlalchemy import text
+    checks = {}
+    overall = "healthy"
+    try:
+        engine = get_engine()
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        checks["database"] = "connected"
+    except Exception as e:
+        checks["database"] = f"disconnected: {e}"
+        overall = "unhealthy"
+    from app.services.gemini import gemini_service
+    gs = gemini_service.get_status()
+    checks["gemini"] = gs.get("status", "unknown")
+    if checks["gemini"] in ("QUOTA_EXCEEDED", "OFFLINE"):
+        overall = "degraded"
+    from app.config import settings
+    checks["mock_mode"] = settings.MOCK_INTELLIGENCE_MODE
+    async with get_session_factory()() as session:
+        try:
+            incident_count = await session.scalar(text("SELECT COUNT(*) FROM incidents"))
+            checks["incidents"] = incident_count or 0
+        except Exception:
+            checks["incidents"] = -1
+        try:
+            risk_count = await session.scalar(text("SELECT COUNT(*) FROM risk_scores"))
+            checks["risk_scores"] = risk_count or 0
+        except Exception:
+            checks["risk_scores"] = -1
+        try:
+            fresh_risk = await session.scalar(text("SELECT COUNT(*) FROM risk_scores WHERE calculated_at >= NOW() - INTERVAL '48 hours'"))
+            checks["risk_scores_fresh_48h"] = fresh_risk or 0
+        except Exception:
+            checks["risk_scores_fresh_48h"] = -1
+    status_code = 200 if overall == "healthy" else 503 if overall == "unhealthy" else 200
+    return JSONResponse(
+        status_code=status_code,
+        content={"status": overall, "version": settings.VERSION, "checks": checks, "timestamp": datetime.now(timezone.utc).isoformat()},
+    )
 
 
 @app.get("/health/database")

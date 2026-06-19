@@ -207,8 +207,17 @@ async def geocode_incidents(incidents: List[dict]) -> List[dict]:
                             {"q": query, "lat": inc["latitude"], "lng": inc["longitude"], "dn": inc.get("display_name", "")},
                         )
                     else:
-                        inc["latitude"] = None
-                        inc["longitude"] = None
+                        # Fallback: attempt google-style reverse geocode or extract from location string
+                        import re
+                        coord_pattern = re.compile(r'([-+]?\d+\.?\d*)\s*[,/]\s*([-+]?\d+\.?\d*)')
+                        match = coord_pattern.search(location_str)
+                        if match:
+                            inc["latitude"] = float(match.group(1))
+                            inc["longitude"] = float(match.group(2))
+                            logger.info(f"[GEOCODE] Fallback extracted coords from location string: lat={inc['latitude']}, lng={inc['longitude']}")
+                        else:
+                            inc["latitude"] = None
+                            inc["longitude"] = None
                 except Exception as e:
                     logger.warning(f"Geocode failed for '{location_str}': {e}")
                     inc["latitude"] = None
@@ -423,7 +432,14 @@ async def run_intelligence_pipeline() -> dict:
     try:
         save_result = await save_incidents(all_incidents)
         results["steps"]["save"] = {"status": "ok", **save_result}
-        logger.info(f"Step 4 complete: saved {save_result['saved']}")
+        logger.info(f"Step 4 complete: saved {save_result['saved']} of {save_result['total']} (skipped {save_result['skipped']})")
+        if save_result["saved"] == 0 and save_result["total"] > 0:
+            logger.error("[PIPELINE] 0 incidents saved — likely geocoding failed for all. Aborting.")
+            results["steps"]["save"]["status"] = "failed"
+            results["steps"]["save"]["error"] = "All incidents lacked coordinates — geocoding failure"
+            results["duration_seconds"] = round(time.time() - start, 2)
+            logger.info("[PIPELINE_END] 0 saved — pipeline aborted")
+            return results
     except Exception as e:
         results["steps"]["save"] = {"status": "failed", "error": str(e)}
         logger.error(f"Step 4 failed: {e}")
@@ -444,12 +460,19 @@ async def run_intelligence_pipeline() -> dict:
         bounds_list = await compute_localized_bounds(buffer_degrees=0.05, max_cells_per=1000)
         if bounds_list:
             total_points = 0
+            zone_errors = []
             for i, (sw_lat, sw_lng, ne_lat, ne_lng) in enumerate(bounds_list):
                 logger.info(f"[PIPELINE] Heatmap zone {i+1}/{len(bounds_list)}: ({sw_lat:.4f},{sw_lng:.4f}) to ({ne_lat:.4f},{ne_lng:.4f})")
                 heat_result = await update_heatmap_for_bounds(sw_lat, sw_lng, ne_lat, ne_lng)
+                if "error" in heat_result:
+                    logger.warning(f"[PIPELINE] Heatmap zone {i+1} returned error: {heat_result['error']}")
+                    zone_errors.append(heat_result["error"])
                 total_points += heat_result.get("points_generated", 0)
+            heatmap_status = "failed" if (total_points == 0 and zone_errors) else "ok"
             heat_result = {"points_generated": total_points}
-            results["steps"]["heatmap"] = {"status": "ok", **heat_result}
+            if zone_errors:
+                heat_result["zone_errors"] = zone_errors
+            results["steps"]["heatmap"] = {"status": heatmap_status, **heat_result}
             logger.info(f"Step 6 complete: {total_points} heatmap points across {len(bounds_list)} zone(s)")
         else:
             from app.config import settings
@@ -457,7 +480,8 @@ async def run_intelligence_pipeline() -> dict:
             sw_lat, sw_lng, ne_lat, ne_lng = bounds[0], bounds[2], bounds[1], bounds[3]
             logger.info(f"[PIPELINE] No recent incident clusters — fallback to state bounds")
             heat_result = await update_heatmap_for_bounds(sw_lat, sw_lng, ne_lat, ne_lng)
-            results["steps"]["heatmap"] = {"status": "ok", **heat_result}
+            heatmap_status = "failed" if ("error" in heat_result and heat_result.get("points_generated", 0) == 0) else "ok"
+            results["steps"]["heatmap"] = {"status": heatmap_status, **heat_result}
     except Exception as e:
         results["steps"]["heatmap"] = {"status": "failed", "error": str(e)}
         logger.error(f"Step 6 failed: {e}")

@@ -171,6 +171,42 @@ async def admin_dashboard(
     )
 
 
+@router.get("/metrics")
+async def admin_metrics(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    result = await db.execute(
+        text("""
+            SELECT
+                (SELECT COUNT(*) FROM incidents) as total_incidents,
+                (SELECT COUNT(*) FROM incidents WHERE created_at >= NOW() - INTERVAL '24 hours') as incidents_24h,
+                (SELECT COUNT(*) FROM incidents WHERE created_at >= NOW() - INTERVAL '7 days') as incidents_7d,
+                (SELECT COUNT(*) FROM risk_scores) as risk_score_count,
+                (SELECT COUNT(*) FROM risk_scores WHERE calculated_at >= NOW() - INTERVAL '48 hours') as risk_scores_fresh,
+                (SELECT COUNT(*) FROM users) as total_users,
+                (SELECT COUNT(*) FROM users WHERE is_active = true) as active_users,
+                (SELECT COUNT(*) FROM sos_events) as sos_events,
+                (SELECT COUNT(*) FROM safety_reports) as safety_reports,
+                (SELECT COUNT(*) FROM audit_logs WHERE created_at >= NOW() - INTERVAL '7 days') as audit_logs_7d
+        """)
+    )
+    row = result.fetchone()
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "total_incidents": int(row[0]),
+        "incidents_24h": int(row[1]),
+        "incidents_7d": int(row[2]),
+        "risk_score_count": int(row[3]),
+        "risk_scores_fresh_48h": int(row[4]),
+        "total_users": int(row[5]),
+        "active_users": int(row[6]),
+        "sos_events": int(row[7]),
+        "safety_reports": int(row[8]),
+        "audit_logs_7d": int(row[9]),
+    }
+
+
 @router.get("/incidents")
 async def list_incidents_moderation(
     status: str = Query(None),

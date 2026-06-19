@@ -2,6 +2,7 @@ import * as React from 'react'
 import { X, Navigation, MapPin, ExternalLink, Shield, Clock, Building2, Newspaper } from 'lucide-react'
 import { useMapStore } from '@/store/mapStore'
 import { useLocationName } from '@/hooks/useLocationName'
+import { riskApi } from '@/services/api'
 import type { ExplainResponse, ExplainSourceItem } from '@/types'
 
 function getRiskColor(s: number): string {
@@ -146,12 +147,10 @@ export function RiskIntelligencePanel({ onGetSafeRoute, onClose }: RiskIntellige
     if (!selectedLocation) return
     setIsLoading(true)
     setError(null)
-    import('@/services/api').then(({ riskApi }) =>
-      riskApi.explainScore(selectedLocation.lat, selectedLocation.lng)
-        .then(setExplain)
-        .catch((err: Error) => setError(err.message))
-        .finally(() => setIsLoading(false))
-    )
+    riskApi.explainScore(selectedLocation.lat, selectedLocation.lng)
+      .then(setExplain)
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setIsLoading(false))
   }, [selectedLocation])
 
   if (!selectedLocation) return null
