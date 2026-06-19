@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_WINDOW: int = 60
 
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS_REGEX: str = r"https?://.*\.vercel\.app"
 
     KARNATAKA_BOUNDS: str = "11.5,18.0,74.0,78.5"
 

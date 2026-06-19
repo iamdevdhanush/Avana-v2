@@ -316,7 +316,6 @@ async def get_heatmap_data(
                 FROM risk_scores
                 WHERE latitude BETWEEN :sw_lat AND :ne_lat
                   AND longitude BETWEEN :sw_lng AND :ne_lng
-                  AND calculated_at >= NOW() - INTERVAL '48 hours'
                   AND score >= :min_score
                 ORDER BY latitude, longitude, calculated_at DESC
             """),
@@ -326,12 +325,6 @@ async def get_heatmap_data(
         )
         rows = result.fetchall()
         logger.info(f"[HEATMAP] points returned: {len(rows)} (bounds: {sw_lat:.4f}-{ne_lat:.4f}, {sw_lng:.4f}-{ne_lng:.4f})")
-
-        risk_recent = await session.execute(
-            text("SELECT COUNT(*) FROM risk_scores WHERE calculated_at >= NOW() - INTERVAL '48 hours'")
-        )
-        recent_count = risk_recent.scalar() or 0
-        logger.info(f"[HEATMAP] risk scores with calculated_at < 48h: {recent_count}")
 
         risk_all_bounds = await session.execute(
             text("""
@@ -344,25 +337,6 @@ async def get_heatmap_data(
         )
         bounds_count = risk_all_bounds.scalar() or 0
         logger.info(f"[HEATMAP] risk scores in bounds (any age): {bounds_count}")
-
-        if bounds_count > 0 and recent_count == 0:
-            logger.info("[HEATMAP] Removing 48h filter — all risk_scores are stale")
-            result = await session.execute(
-                text("""
-                    SELECT DISTINCT ON (latitude, longitude)
-                        latitude, longitude, score, category
-                    FROM risk_scores
-                    WHERE latitude BETWEEN :sw_lat AND :ne_lat
-                      AND longitude BETWEEN :sw_lng AND :ne_lng
-                      AND score >= :min_score
-                    ORDER BY latitude, longitude, calculated_at DESC
-                """),
-                {"sw_lat": sw_lat, "ne_lat": ne_lat,
-                 "sw_lng": sw_lng, "ne_lng": ne_lng,
-                 "min_score": min_score},
-            )
-            rows = result.fetchall()
-            logger.info(f"[HEATMAP] points returned after removing time filter: {len(rows)}")
 
         return [
             {"latitude": float(r[0]), "longitude": float(r[1]),

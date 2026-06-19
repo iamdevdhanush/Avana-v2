@@ -389,6 +389,7 @@ async def run_pipeline(
         "intelligence": run_intelligence_pipeline,
         "community": process_pending_reports,
         "risk": recalculate_all_risk_scores,
+        "heatmap": lambda: generate_heatmap_for_bounds(11.5, 74.0, 18.0, 78.5, zoom="city"),
     }
 
     runner = pipeline_map.get(pipeline_name)

@@ -130,10 +130,16 @@ async def _bootstrap_heatmap_data():
     try:
         factory = get_session_factory()
         async with factory() as session:
-            count = await session.scalar(text("SELECT COUNT(*) FROM risk_scores"))
-            if count and count > 0:
-                logger.info(f"[BOOTSTRAP] risk_scores already has {count} rows — skipping seed")
+            fresh_count = await session.scalar(
+                text("SELECT COUNT(*) FROM risk_scores WHERE calculated_at >= NOW() - INTERVAL '48 hours'")
+            )
+            if fresh_count and fresh_count > 0:
+                logger.info(f"[BOOTSTRAP] risk_scores has {fresh_count} fresh rows — skipping seed")
                 return
+            all_count = await session.scalar(text("SELECT COUNT(*) FROM risk_scores"))
+            if all_count and all_count > 0:
+                logger.info(f"[BOOTSTRAP] risk_scores has {all_count} stale rows — reseeding anyway")
+                await session.execute(text("DELETE FROM risk_scores"))
 
         logger.info("[BOOTSTRAP] risk_scores is empty — running initial pipeline")
         from app.pipeline.intelligence import run_intelligence_pipeline
@@ -172,6 +178,7 @@ async def _bootstrap_heatmap_data():
         (15.8573, 74.5069, 20.0, "SAFE"),
         (15.8497, 74.4977, 25.0, "SAFE"),
         (13.3409, 74.7421, 15.0, "SAFE"),
+        (13.9299, 75.5681, 35.0, "MODERATE"),   # Shivamogga
     ]
     factory = get_session_factory()
     async with factory() as session:
@@ -213,6 +220,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
+    allow_origin_regex=settings.CORS_ORIGINS_REGEX,
     allow_origins=settings.CORS_ORIGINS.split(","),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
