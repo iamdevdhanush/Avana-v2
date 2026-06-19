@@ -92,6 +92,20 @@ async def get_heatmap(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Heatmap query failed: {str(e)}")
 
     logger.info(f"[HEATMAP] API endpoint: {len(points_data)} points returned from get_heatmap_data")
+    logger.info(f"[HEATMAP_DEBUG] bounds: sw=({body.sw_lat},{body.sw_lng}) ne=({body.ne_lat},{body.ne_lng}) min_score={body.min_score}")
+
+    try:
+        total_rs = await db.execute(text("SELECT COUNT(*) FROM risk_scores"))
+        total_rs_count = total_rs.scalar() or 0
+        fresh_rs = await db.execute(text("SELECT COUNT(*) FROM risk_scores WHERE calculated_at >= NOW() - INTERVAL '48 hours'"))
+        fresh_rs_count = fresh_rs.scalar() or 0
+        total_inc = await db.execute(text("SELECT COUNT(*) FROM incidents"))
+        total_inc_count = total_inc.scalar() or 0
+        ws_inc = await db.execute(text("SELECT COUNT(*) FROM incidents WHERE metadata->>'women_safety_category' IS NOT NULL"))
+        ws_inc_count = ws_inc.scalar() or 0
+        logger.info(f"[HEATMAP_DEBUG] DB state: risk_scores total={total_rs_count} fresh_48h={fresh_rs_count} incidents total={total_inc_count} with_ws={ws_inc_count}")
+    except Exception as diag_e:
+        logger.warning(f"[HEATMAP_DEBUG] diagnostic query failed: {diag_e}")
 
     points = [
         _make_heatmap_point(p.get("latitude", 0), p.get("longitude", 0), p.get("score", 50.0), p.get("category", "Moderate"))

@@ -262,16 +262,22 @@ async def save_incidents(incidents: List[dict]) -> dict:
     saved = 0
     skipped = 0
     errors = []
+    has_coords = sum(1 for i in incidents if i.get("latitude") is not None and i.get("longitude") is not None)
+    has_ws = sum(1 for i in incidents if i.get("women_safety_category"))
+    logger.info(f"[SAVE_DEBUG] Received {len(incidents)} incidents: {has_coords} with coords, {has_ws} with women_safety_category")
     factory = get_session_factory()
     async with factory() as session:
         existing = await session.execute(
             select(Incident).where(Incident.source == IncidentSource.NEWS).limit(500)
         )
         existing_incidents = existing.scalars().all()
+        logger.info(f"[SAVE_DEBUG] {len(existing_incidents)} existing incidents in DB")
         for inc in incidents:
             lat = inc.get("latitude")
             lng = inc.get("longitude")
             if lat is None or lng is None:
+                if skipped < 5:
+                    logger.info(f"[SAVE_DEBUG] Skipping incident (no coords): {inc.get('location', 'unknown')} lat={lat} lng={lng}")
                 skipped += 1
                 continue
             source_url = inc.get("source_url", "")

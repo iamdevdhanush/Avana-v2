@@ -22,8 +22,28 @@ async def explain_risk(
     incident_count = 0
     sources: List[dict] = []
 
+    logger.info(f"[EXPLAIN_DEBUG] lat={lat}, lng={lng}, radius_m={radius_m}")
+
     try:
         async with factory() as session:
+            # 0. Diagnostic: count total incidents, incidents with women_safety_category
+            try:
+                total_inc = await session.execute(text("SELECT COUNT(*) FROM incidents"))
+                total_inc_count = total_inc.scalar() or 0
+                ws_inc = await session.execute(text("SELECT COUNT(*) FROM incidents WHERE metadata->>'women_safety_category' IS NOT NULL"))
+                ws_inc_count = ws_inc.scalar() or 0
+                with_coords = await session.execute(text("SELECT COUNT(*) FROM incidents WHERE latitude IS NOT NULL AND longitude IS NOT NULL"))
+                coord_count = with_coords.scalar() or 0
+                logger.info(f"[EXPLAIN_DEBUG] incidents total={total_inc_count}, with_coords={coord_count}, with_women_safety={ws_inc_count}")
+
+                risk_total = await session.execute(text("SELECT COUNT(*) FROM risk_scores"))
+                risk_total_count = risk_total.scalar() or 0
+                risk_recent = await session.execute(text("SELECT COUNT(*) FROM risk_scores WHERE calculated_at >= NOW() - INTERVAL '48 hours'"))
+                risk_recent_count = risk_recent.scalar() or 0
+                logger.info(f"[EXPLAIN_DEBUG] risk_scores total={risk_total_count}, recent_48h={risk_recent_count}")
+            except Exception as diag_e:
+                logger.warning(f"[EXPLAIN_DEBUG] diagnostic query failed: {diag_e}")
+
             # 1. Score from risk_scores
             try:
                 sr = await session.execute(
@@ -41,6 +61,9 @@ async def explain_risk(
                 if row:
                     risk_score = float(row[0])
                     risk_category = str(row[1])
+                    logger.info(f"[EXPLAIN_DEBUG] risk_scores found score={risk_score} cat={risk_category}")
+                else:
+                    logger.info(f"[EXPLAIN_DEBUG] risk_scores NOT FOUND at ({lat}, {lng})")
             except Exception as e:
                 logger.warning(f"[EXPLAIN] risk_scores query failed: {e}")
 
@@ -67,7 +90,11 @@ async def explain_risk(
                     """),
                     {"lat": lat, "lng": lng, "radius_m": radius_m},
                 )
-                for r in ir.fetchall():
+                incident_rows = ir.fetchall()
+                logger.info(f"[EXPLAIN_DEBUG] incidents nearby query: lat={lat} lng={lng} radius_m={radius_m} -> {len(incident_rows)} rows")
+                for r in incident_rows[:5]:
+                    logger.info(f"[EXPLAIN_DEBUG]   incident id={r[0]} type={r[1]} dist={r[8] if len(r) > 8 else '?'}")
+                for r in incident_rows:
                     dist_m = float(r[8]) if r[8] else 0.0
                     raw_source = str(r[5])
                     raw_meta = r[7] if r[7] else {}

@@ -560,3 +560,108 @@ async def get_last_pipeline_run(
         "ran_at": row[1].isoformat() if row[1] else None,
         **row[0],
     }
+
+
+@router.get("/debug/heatmap-state")
+async def debug_heatmap_state(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Diagnostic endpoint: dump incident + risk_score state to find production/localhost mismatches."""
+    result = {}
+
+    # Total incidents
+    total_inc = await db.execute(text("SELECT COUNT(*) FROM incidents"))
+    result["incidents_total"] = total_inc.scalar() or 0
+
+    # Incidents with coordinates
+    with_coords = await db.execute(text("SELECT COUNT(*) FROM incidents WHERE latitude IS NOT NULL AND longitude IS NOT NULL"))
+    result["incidents_geocoded"] = with_coords.scalar() or 0
+
+    # Incidents with no coordinates
+    no_coords = await db.execute(text("SELECT COUNT(*) FROM incidents WHERE latitude IS NULL OR longitude IS NULL"))
+    result["incidents_no_coords"] = no_coords.scalar() or 0
+
+    # Incidents with women_safety_category
+    ws_inc = await db.execute(text("SELECT COUNT(*) FROM incidents WHERE metadata->>'women_safety_category' IS NOT NULL"))
+    result["incidents_with_women_safety"] = ws_inc.scalar() or 0
+
+    # Incidents by source
+    by_source = await db.execute(text("SELECT source, COUNT(*) FROM incidents GROUP BY source"))
+    result["incidents_by_source"] = {str(r[0]): int(r[1]) for r in by_source.fetchall()}
+
+    # Districts with incidents
+    districts = await db.execute(text("""
+        SELECT district, COUNT(*),
+               COUNT(*) FILTER (WHERE metadata->>'women_safety_category' IS NOT NULL) as ws_count
+        FROM incidents WHERE district IS NOT NULL
+        GROUP BY district ORDER BY COUNT(*) DESC
+    """))
+    result["districts"] = [
+        {"district": str(r[0]), "total": int(r[1]), "with_women_safety": int(r[2])}
+        for r in districts.fetchall()
+    ]
+
+    # Sample incidents (first 5)
+    samples = await db.execute(text("""
+        SELECT id, incident_type, severity, latitude, longitude,
+               metadata->>'women_safety_category' as ws_cat,
+               district, city, created_at
+        FROM incidents ORDER BY created_at DESC LIMIT 5
+    """))
+    result["sample_incidents"] = []
+    for r in samples.fetchall():
+        result["sample_incidents"].append({
+            "id": str(r[0]),
+            "incident_type": str(r[1]),
+            "severity": str(r[2]),
+            "latitude": float(r[3]) if r[3] else None,
+            "longitude": float(r[4]) if r[4] else None,
+            "women_safety_category": str(r[5]) if r[5] else None,
+            "district": str(r[6]) if r[6] else None,
+            "city": str(r[7]) if r[7] else None,
+            "created_at": r[8].isoformat() if r[8] else None,
+        })
+
+    # Risk scores
+    total_rs = await db.execute(text("SELECT COUNT(*) FROM risk_scores"))
+    result["risk_scores_total"] = total_rs.scalar() or 0
+
+    fresh_rs = await db.execute(text("SELECT COUNT(*) FROM risk_scores WHERE calculated_at >= NOW() - INTERVAL '48 hours'"))
+    result["risk_scores_recent_48h"] = fresh_rs.scalar() or 0
+
+    stale_rs = await db.execute(text("SELECT COUNT(*) FROM risk_scores WHERE calculated_at < NOW() - INTERVAL '7 days'"))
+    result["risk_scores_stale_7d"] = stale_rs.scalar() or 0
+
+    # Risk score sample
+    rs_samples = await db.execute(text("""
+        SELECT latitude, longitude, score, category, calculated_at
+        FROM risk_scores ORDER BY calculated_at DESC LIMIT 10
+    """))
+    result["sample_risk_scores"] = [
+        {
+            "latitude": float(r[0]),
+            "longitude": float(r[1]),
+            "score": float(r[2]),
+            "category": str(r[3]),
+            "calculated_at": r[4].isoformat() if r[4] else None,
+        }
+        for r in rs_samples.fetchall()
+    ]
+
+    # Latest pipeline run
+    last_run = await db.execute(text("""
+        SELECT details, created_at FROM audit_logs
+        WHERE action IN ('run_pipeline', 'run_pipeline_failed', 'run_pipeline_skipped')
+        ORDER BY created_at DESC LIMIT 1
+    """))
+    row = last_run.fetchone()
+    if row:
+        result["last_pipeline_run"] = {
+            "at": row[1].isoformat() if row[1] else None,
+            "details": row[0] if row[0] else {},
+        }
+    else:
+        result["last_pipeline_run"] = None
+
+    return result
