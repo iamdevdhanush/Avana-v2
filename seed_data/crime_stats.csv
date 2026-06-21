@@ -1,0 +1,44 @@
+district,city,crime_type,crime_category,crime_count,year,month,latitude,longitude
+Bengaluru Urban,Bengaluru,Theft,Property,450,2024,1,12.9716,77.5946
+Bengaluru Urban,Bengaluru,Burglary,Property,120,2024,1,12.9716,77.5946
+Bengaluru Urban,Bengaluru,Rape,Women Safety,85,2024,1,12.9716,77.5946
+Bengaluru Urban,Bengaluru,Molestation,Women Safety,195,2024,1,12.9716,77.5946
+Bengaluru Urban,Bengaluru,Domestic Violence,Women Safety,230,2024,1,12.9716,77.5946
+Bengaluru Urban,Bengaluru,Stalking,Women Safety,145,2024,1,12.9716,77.5946
+Bengaluru Urban,Bengaluru,Acid Attack,Women Safety,3,2024,1,12.9716,77.5946
+Bengaluru Urban,Bengaluru,Assault,Women Safety,65,2024,1,12.9716,77.5946
+Mysuru,Mysuru,Theft,Property,85,2024,1,12.2958,76.6394
+Mysuru,Mysuru,Robbery,Property,25,2024,1,12.2958,76.6394
+Mysuru,Mysuru,Domestic Violence,Women Safety,85,2024,1,12.2958,76.6394
+Mysuru,Mysuru,Molestation,Women Safety,65,2024,1,12.2958,76.6394
+Mysuru,Mysuru,Stalking,Women Safety,40,2024,1,12.2958,76.6394
+Mysuru,Mysuru,Rape,Women Safety,22,2024,1,12.2958,76.6394
+Belagavi,Belagavi,Murder,IPC,5,2024,1,15.8497,74.4977
+Belagavi,Belagavi,Assault,IPC,45,2024,1,15.8497,74.4977
+Belagavi,Belagavi,Domestic Violence,Women Safety,55,2024,1,15.8497,74.4977
+Belagavi,Belagavi,Molestation,Women Safety,35,2024,1,15.8497,74.4977
+Dakshina Kannada,Mangaluru,Theft,Property,200,2024,1,12.9141,74.8560
+Dakshina Kannada,Mangaluru,Domestic Violence,Women Safety,60,2024,1,12.9141,74.8560
+Dakshina Kannada,Mangaluru,Molestation,Women Safety,45,2024,1,12.9141,74.8560
+Dakshina Kannada,Mangaluru,Stalking,Women Safety,30,2024,1,12.9141,74.8560
+Dakshina Kannada,Mangaluru,Rape,Women Safety,18,2024,1,12.9141,74.8560
+Kalaburagi,Gulbarga,Riot,Crime,30,2024,1,17.3297,76.8343
+Kalaburagi,Gulbarga,Domestic Violence,Women Safety,40,2024,1,17.3297,76.8343
+Kalaburagi,Gulbarga,Molestation,Women Safety,28,2024,1,17.3297,76.8343
+Ballari,Bellary,Burglary,Property,95,2024,1,15.1394,76.9214
+Ballari,Bellary,Domestic Violence,Women Safety,35,2024,1,15.1394,76.9214
+Shivamogga,Shimoga,Traffic Accident,Accident,350,2024,1,13.9299,75.5681
+Shivamogga,Shimoga,Domestic Violence,Women Safety,30,2024,1,13.9299,75.5681
+Udupi,Udupi,Harassment,Women Safety,15,2024,1,13.3409,74.7421
+Hassan,Hassan,Theft,Property,55,2024,1,13.0055,76.0913
+Hassan,Hassan,Domestic Violence,Women Safety,25,2024,1,13.0055,76.0913
+Davangere,Davangere,Kidnapping,IPC,8,2024,1,14.4667,75.9833
+Davangere,Davangere,Domestic Violence,Women Safety,22,2024,1,14.4667,75.9833
+Tumakuru,Tumkur,Vandalism,Property,22,2024,1,13.3379,77.1173
+Tumakuru,Tumkur,Molestation,Women Safety,20,2024,1,13.3379,77.1173
+Dharwad,Hubli,Robbery,Property,40,2024,1,15.4589,75.0078
+Dharwad,Hubli,Domestic Violence,Women Safety,35,2024,1,15.4589,75.0078
+Bidar,Bidar,Burglary,Property,30,2024,1,17.9133,77.5300
+Bidar,Bidar,Molestation,Women Safety,15,2024,1,17.9133,77.5300
+Raichur,Raichur,Theft,Property,45,2024,1,16.2059,77.3567
+Raichur,Raichur,Domestic Violence,Women Safety,20,2024,1,16.2059,77.3567

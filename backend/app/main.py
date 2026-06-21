@@ -39,29 +39,10 @@ async def lifespan(app: FastAPI):
     await validate_schema()
     logger.info("Schema validation complete")
 
-    # Gemini startup diagnostic
-    try:
-        from app.services.gemini import gemini_service as gs
-        import google.generativeai as genai
-        sd = gs.get_status()
-        init_err = getattr(gs, '_init_error', None)
-        logger.info(
-            f"[GEMINI_DIAG] enabled={bool(settings.GEMINI_API_KEY)} "
-            f"key_present={bool(settings.GEMINI_API_KEY and len(settings.GEMINI_API_KEY) >= 10)} "
-            f"key_length={len(settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else 0} "
-            f"sdk=google-generativeai-{genai.__version__} "
-            f"auth_method=api_key (genai.configure) "
-            f"status={sd.get('status', 'unknown')} "
-            f"init_error={init_err}"
-        )
-        if sd.get("status") != "ONLINE":
-            logger.warning(f"[GEMINI_DIAG] Gemini NOT available: status={sd.get('status')} error={sd.get('error')} init_error={init_err}")
-    except Exception as diag_err:
-        logger.warning(f"[GEMINI_DIAG] diagnostic failed: {diag_err}")
-
     await _run_alembic_migrations()
     await _ensure_risk_scores_constraint()
-    asyncio.create_task(_bootstrap_heatmap_data())
+    asyncio.create_task(_bootstrap_offline_data())
+    asyncio.create_task(_gemini_diagnostics())
 
     yield
     logger.info("Shutting down")
@@ -129,59 +110,95 @@ async def _ensure_risk_scores_constraint():
         logger.error(f"[SCHEMA] Failed to ensure constraint: {e}")
 
 
-async def _bootstrap_heatmap_data():
+async def _gemini_diagnostics():
+    """Diagnose Gemini status for logging/health only. Never required for data."""
+    try:
+        from app.services.gemini import gemini_service as gs
+        import google.generativeai as genai
+        sd = gs.get_status()
+        init_err = getattr(gs, '_init_error', None)
+        logger.info(
+            f"[GEMINI_DIAG] enabled={bool(settings.GEMINI_API_KEY)} "
+            f"key_present={bool(settings.GEMINI_API_KEY and len(settings.GEMINI_API_KEY) >= 10)} "
+            f"key_length={len(settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else 0} "
+            f"sdk=google-generativeai-{genai.__version__} "
+            f"status={sd.get('status', 'unknown')} "
+            f"init_error={init_err}"
+        )
+        if sd.get("status") != "ONLINE":
+            logger.warning(f"[GEMINI_DIAG] Gemini NOT available: status={sd.get('status')} error={sd.get('error')} init_error={init_err}")
+    except Exception as diag_err:
+        logger.warning(f"[GEMINI_DIAG] diagnostic failed: {diag_err}")
+
+
+async def _bootstrap_offline_data():
+    """
+    Offline-first bootstrap. Never depends on Gemini.
+    Seeds from CSV if database is empty, generates risk_scores and heatmap.
+    """
     from sqlalchemy import text
     from app.database import get_session_factory
+    import os
+
+    _file_dir = os.path.dirname(os.path.abspath(__file__))
+    _project_root = os.path.dirname(os.path.dirname(_file_dir))
+    SEED_DIR = os.path.join(_project_root, "seed_data")
 
     try:
         factory = get_session_factory()
         async with factory() as session:
-            fresh_count = await session.scalar(
-                text("SELECT COUNT(*) FROM risk_scores WHERE calculated_at >= NOW() - INTERVAL '48 hours'")
-            )
-            if fresh_count and fresh_count > 0:
-                logger.info(f"[BOOTSTRAP] risk_scores has {fresh_count} fresh rows — skipping seed")
-                return
-            all_count = await session.scalar(text("SELECT COUNT(*) FROM risk_scores"))
-            if all_count and all_count > 0:
-                logger.info(f"[BOOTSTRAP] risk_scores has {all_count} stale rows — reseeding anyway")
-                await session.execute(text("DELETE FROM risk_scores"))
+            risk_count = await session.scalar(text("SELECT COUNT(*) FROM risk_scores"))
+            incident_count = await session.scalar(text("SELECT COUNT(*) FROM incidents"))
 
-        logger.info("[BOOTSTRAP] risk_scores is empty — running initial pipeline")
-        from app.pipeline.intelligence import run_intelligence_pipeline
+        logger.info(f"[BOOTSTRAP] DB state: {incident_count} incidents, {risk_count} risk_scores")
 
-        result = await run_intelligence_pipeline()
+        # Phase 1: Seed police stations + hospitals if empty
+        async with factory() as session:
+            ps_count = await session.scalar(text("SELECT COUNT(*) FROM police_stations"))
+        if ps_count == 0:
+            logger.info("[BOOTSTRAP] police_stations empty — seeding from CSV")
+            from scripts.seed_police_hospitals import seed_police_stations, seed_hospitals
+            await seed_police_stations(os.path.join(SEED_DIR, "police_stations.csv"))
+            await seed_hospitals(os.path.join(SEED_DIR, "hospitals.csv"))
+        else:
+            logger.info(f"[BOOTSTRAP] police_stations: {ps_count} rows — skipping")
 
-        if result.get("status") == "skipped" and "gemini" in result.get("reason", ""):
-            logger.info("[BOOTSTRAP] Pipeline skipped (Gemini unavailable) — retrying with mock mode")
-            original = settings.MOCK_INTELLIGENCE_MODE
-            settings.MOCK_INTELLIGENCE_MODE = True
-            try:
-                result = await run_intelligence_pipeline()
-                logger.info(f"[BOOTSTRAP] Mock pipeline result: {result.get('status', 'unknown')}")
-            finally:
-                settings.MOCK_INTELLIGENCE_MODE = original
+        # Phase 2: Seed incidents if empty
+        if incident_count == 0:
+            logger.info("[BOOTSTRAP] incidents empty — seeding from CSV")
+            from scripts.seed_incidents import seed_incidents
+            result = await seed_incidents(os.path.join(SEED_DIR, "incidents.csv"))
+            logger.info(f"[BOOTSTRAP] Incident seed result: {result}")
+            incident_count = result.get("inserted", 0)
 
-        heat_count = result.get("steps", {}).get("heatmap", {}).get("points_generated", 0)
-        if heat_count > 0:
-            logger.info(f"[BOOTSTRAP] Pipeline complete — {heat_count} heatmap points generated")
+        if incident_count == 0:
+            logger.warning("[BOOTSTRAP] No incidents seeded — nothing to bootstrap")
             return
 
-            logger.warning("[BOOTSTRAP] Pipeline produced no heatmap points — attempting grid generation")
-    except Exception as e:
-        logger.error(f"[BOOTSTRAP] Pipeline failed: {e} — attempting grid generation")
+        # Phase 3: Generate risk_scores from seeded incidents
+        if risk_count == 0:
+            logger.info("[BOOTSTRAP] risk_scores empty — generating from incidents")
+            from scripts.seed_risk_scores import seed_risk_scores
+            risk_result = await seed_risk_scores()
+            logger.info(f"[BOOTSTRAP] Risk score result: {risk_result}")
 
-    logger.info("[BOOTSTRAP] Generating direct grid heatmap for Karnataka")
-    from app.pipeline.heatmap import generate_heatmap_for_bounds
-    from app.config import settings as cfg
-    bounds = [float(x) for x in cfg.KARNATAKA_BOUNDS.split(",")]
-    sw_lat, sw_lng, ne_lat, ne_lng = bounds[0], bounds[2], bounds[1], bounds[3]
-    grid_result = await generate_heatmap_for_bounds(sw_lat, sw_lng, ne_lat, ne_lng, zoom="state")
-    points = grid_result.get("points_generated", 0)
-    if points > 0:
-        logger.info(f"[BOOTSTRAP] Grid heatmap generated {points} points across {grid_result.get('chunks_used', 1)} chunk(s)")
-    else:
-        logger.error(f"[BOOTSTRAP] Grid heatmap generation failed: {grid_result.get('error', 'unknown')}")
+        # Phase 4: Generate heatmap grid
+        async with factory() as session:
+            fresh = await session.scalar(
+                text("SELECT COUNT(*) FROM risk_scores WHERE calculated_at >= NOW() - INTERVAL '48 hours'")
+            )
+        if fresh == 0:
+            logger.info("[BOOTSTRAP] Generating heatmap grid from seeded data")
+            from app.pipeline.heatmap import generate_heatmap_for_bounds
+            bounds = [float(x) for x in settings.KARNATAKA_BOUNDS.split(",")]
+            sw_lat, sw_lng, ne_lat, ne_lng = bounds[0], bounds[2], bounds[1], bounds[3]
+            grid_result = await generate_heatmap_for_bounds(sw_lat, sw_lng, ne_lat, ne_lng, zoom="state")
+            logger.info(f"[BOOTSTRAP] Heatmap generated {grid_result.get('points_generated', 0)} points")
+        else:
+            logger.info(f"[BOOTSTRAP] risk_scores has {fresh} fresh rows — skipping heatmap generation")
+
+    except Exception as e:
+        logger.error(f"[BOOTSTRAP] Failed: {e}", exc_info=True)
 
 
 app = FastAPI(
@@ -330,8 +347,7 @@ async def health_deep():
     from app.services.gemini import gemini_service
     gs = gemini_service.get_status()
     checks["gemini"] = gs.get("status", "unknown")
-    if checks["gemini"] in ("QUOTA_EXCEEDED", "OFFLINE"):
-        overall = "degraded"
+    checks["gemini_optional"] = True
     from app.config import settings
     checks["mock_mode"] = settings.MOCK_INTELLIGENCE_MODE
     async with get_session_factory()() as session:
@@ -350,6 +366,22 @@ async def health_deep():
             checks["risk_scores_fresh_48h"] = fresh_risk or 0
         except Exception:
             checks["risk_scores_fresh_48h"] = -1
+        try:
+            police_count = await session.scalar(text("SELECT COUNT(*) FROM police_stations"))
+            checks["police_stations"] = police_count or 0
+        except Exception:
+            checks["police_stations"] = -1
+        try:
+            hospital_count = await session.scalar(text("SELECT COUNT(*) FROM hospitals"))
+            checks["hospitals"] = hospital_count or 0
+        except Exception:
+            checks["hospitals"] = -1
+        try:
+            ws_incidents = await session.scalar(text("SELECT COUNT(*) FROM incidents WHERE metadata->>'women_safety_category' IS NOT NULL"))
+            checks["women_safety_incidents"] = ws_incidents or 0
+        except Exception:
+            checks["women_safety_incidents"] = -1
+        checks["data_source"] = "SEED_DATA" if (checks.get("incidents", 0) or 0) > 0 else "BOOTSTRAP_FALLBACK"
     status_code = 200 if overall == "healthy" else 503 if overall == "unhealthy" else 200
     return JSONResponse(
         status_code=status_code,

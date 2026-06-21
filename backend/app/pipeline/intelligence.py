@@ -389,14 +389,8 @@ async def run_intelligence_pipeline() -> dict:
     else:
         reason = gemini_service.get_unavailable_reason()
         if reason:
-            elapsed = round(time.time() - start, 2)
-            logger.info(f"[PIPELINE_SKIPPED] Gemini {reason} — skipping ({elapsed}s)")
-            logger.info(f"Gemini {reason} — skipping pipeline ({elapsed}s)")
-            results["status"] = "skipped"
-            results["reason"] = f"gemini_{reason.lower()}"
-            results["duration_seconds"] = elapsed
-            logger.info("[PIPELINE_END] Skipped — no work done")
-            return results
+            logger.info(f"[PIPELINE] Gemini {reason} — falling back to mock data automatically")
+            mock_mode = True
 
     if mock_mode:
         all_incidents = _get_mock_incidents()

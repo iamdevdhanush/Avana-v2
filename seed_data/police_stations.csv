@@ -1,0 +1,39 @@
+id,name,latitude,longitude,district,city,phone,has_emergency_number,station_type
+1,Cubbon Park Police Station,12.9767,77.5920,Bengaluru Urban,Bengaluru,080-22943200,TRUE,police_station
+2,Koramangala Police Station,12.9345,77.6145,Bengaluru Urban,Bengaluru,080-25533000,TRUE,police_station
+3,Indiranagar Police Station,12.9719,77.6412,Bengaluru Urban,Bengaluru,080-25210841,TRUE,police_station
+4,Jayanagar Police Station,12.9308,77.5835,Bengaluru Urban,Bengaluru,080-26632121,TRUE,police_station
+5,Malleshwaram Police Station,12.9969,77.5694,Bengaluru Urban,Bengaluru,080-23468111,TRUE,police_station
+6,Whitefield Police Station,12.9698,77.7499,Bengaluru Urban,Bengaluru,080-28452111,TRUE,police_station
+7,MG Road Police Station,12.9756,77.6066,Bengaluru Urban,Bengaluru,080-25585555,TRUE,police_station
+8,Yeshwanthpur Police Station,13.0227,77.5424,Bengaluru Urban,Bengaluru,080-23376111,TRUE,police_station
+9,Banashankari Police Station,12.9231,77.5463,Bengaluru Urban,Bengaluru,080-26705555,TRUE,police_station
+10,RT Nagar Police Station,13.0197,77.5956,Bengaluru Urban,Bengaluru,080-23332323,TRUE,police_station
+11,Mysuru City Police Station,12.2958,76.6394,Mysuru,Mysuru,0821-2444000,TRUE,police_station
+12,Hubli Police Station,15.3500,75.1400,Dharwad,Hubli,0836-2353800,TRUE,police_station
+13,Mangaluru Police Station,12.8698,74.8420,Dakshina Kannada,Mangaluru,0824-2220500,TRUE,police_station
+14,Belagavi Police Station,15.8497,74.4977,Belagavi,Belagavi,0831-2405201,TRUE,police_station
+15,Davangere Police Station,14.4660,75.9240,Davangere,Davangere,08192-251444,TRUE,police_station
+16,Kalaburagi Police Station,17.3297,76.8343,Kalaburagi,Kalaburagi,08472-220500,TRUE,police_station
+17,Ballari Police Station,15.1394,76.9214,Ballari,Ballari,08392-270200,TRUE,police_station
+18,Shivamogga Police Station,13.9299,75.5681,Shivamogga,Shivamogga,08182-270500,TRUE,police_station
+19,Tumakuru Police Station,13.3379,77.1173,Tumakuru,Tumakuru,0816-2275200,TRUE,police_station
+20,Udupi Police Station,13.3409,74.7421,Udupi,Udupi,0820-2522300,TRUE,police_station
+21,Hassan Police Station,13.0055,76.0913,Hassan,Hassan,08172-268400,TRUE,police_station
+22,Raichur Police Station,16.2059,77.3567,Raichur,Raichur,08532-220200,TRUE,police_station
+23,Bidar Police Station,17.9133,77.5300,Bidar,Bidar,08482-222400,TRUE,police_station
+24,Chitradurga Police Station,14.2333,76.4000,Chitradurga,Chitradurga,08194-222500,TRUE,police_station
+25,Mandya Police Station,12.5243,76.8958,Mandya,Mandya,08232-220200,TRUE,police_station
+26,Kolar Police Station,13.1357,78.1295,Kolar,Kolar,08152-222200,TRUE,police_station
+27,Vijayapura Police Station,16.8302,75.7100,Vijayapura,Vijayapura,08352-220200,TRUE,police_station
+28,Kodagu Police Station,12.4200,75.7300,Kodagu,Madikeri,08272-228200,TRUE,police_station
+29,Ramanagara Police Station,12.7200,77.2800,Ramanagara,Ramanagara,080-27271000,TRUE,police_station
+30,Chikkamagaluru Police Station,13.3161,75.7720,Chikkamagaluru,Chikkamagaluru,08262-220200,TRUE,police_station
+31,Koppal Police Station,15.3500,76.1500,Koppal,Koppal,08539-220200,TRUE,police_station
+32,Gadag Police Station,15.4167,75.6167,Gadag,Gadag,08372-220200,TRUE,police_station
+33,Haveri Police Station,14.8000,75.4000,Haveri,Haveri,08375-220200,TRUE,police_station
+34,Bagalkote Police Station,16.1833,75.7000,Bagalkote,Bagalkote,08354-220200,TRUE,police_station
+35,Yadgir Police Station,16.7667,77.1333,Yadgir,Yadgir,08473-220200,TRUE,police_station
+36,Karwar Police Station,14.8130,74.1297,Uttara Kannada,Karwar,08382-220200,TRUE,police_station
+37,Chamarajanagara Police Station,11.9236,76.9397,Chamarajanagara,Chamarajanagara,08226-220200,TRUE,police_station
+38,Vijayanagara Police Station,15.3350,76.4620,Vijayanagara,Hospet,08394-220200,TRUE,police_station

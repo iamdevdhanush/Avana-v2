@@ -1,0 +1,31 @@
+id,name,latitude,longitude,district,city,hospital_type,emergency_services,ambulance_available,trauma_center
+1,NIMHANS,12.9427,77.5969,Bengaluru Urban,Bengaluru,GOVERNMENT,TRUE,TRUE,TRUE
+2,Victoria Hospital,12.9618,77.5653,Bengaluru Urban,Bengaluru,GOVERNMENT,TRUE,TRUE,TRUE
+3,St. John's Medical College Hospital,12.9287,77.6220,Bengaluru Urban,Bengaluru,TRUST,TRUE,TRUE,FALSE
+4,Manipal Hospital (Old Airport Road),12.9602,77.6497,Bengaluru Urban,Bengaluru,PRIVATE,TRUE,TRUE,TRUE
+5,Apollo Hospital (Jayanagar),12.9260,77.5930,Bengaluru Urban,Bengaluru,PRIVATE,TRUE,TRUE,TRUE
+6,KIMS Hospital,12.9657,77.5740,Bengaluru Urban,Bengaluru,GOVERNMENT,TRUE,TRUE,TRUE
+7,MS Ramaiah Memorial Hospital,13.0019,77.5706,Bengaluru Urban,Bengaluru,PRIVATE,TRUE,TRUE,FALSE
+8,Fortis Hospital (Cunningham Road),12.9835,77.6015,Bengaluru Urban,Bengaluru,PRIVATE,TRUE,TRUE,TRUE
+9,Krishna Rajendra Hospital (Mysuru),12.3200,76.6200,Mysuru,Mysuru,GOVERNMENT,TRUE,TRUE,TRUE
+10,Wenlock Hospital (Mangaluru),12.8680,74.8400,Dakshina Kannada,Mangaluru,GOVERNMENT,TRUE,TRUE,TRUE
+11,SDM College of Medical Sciences,15.8500,74.5000,Dharwad,Dharwad,TRUST,TRUE,TRUE,TRUE
+12,KLE Hospital,15.8500,74.5000,Belagavi,Belagavi,PRIVATE,TRUE,TRUE,TRUE
+13,Mcgann Hospital,13.9300,75.5700,Shivamogga,Shivamogga,GOVERNMENT,TRUE,TRUE,FALSE
+14,Government Medical College and Hospital,15.1400,76.9200,Ballari,Ballari,GOVERNMENT,TRUE,TRUE,TRUE
+15,Basaveshwara Hospital,17.3300,76.8300,Kalaburagi,Kalaburagi,GOVERNMENT,TRUE,TRUE,TRUE
+16,Gulbarga Institute of Medical Sciences,17.3300,76.8300,Kalaburagi,Kalaburagi,GOVERNMENT,TRUE,TRUE,TRUE
+17,District Hospital Davangere,14.4700,75.9800,Davangere,Davangere,GOVERNMENT,TRUE,TRUE,TRUE
+18,Chikkamagaluru District Hospital,13.3200,75.7700,Chikkamagaluru,Chikkamagaluru,GOVERNMENT,TRUE,TRUE,FALSE
+19,Tumakuru District Hospital,13.3400,77.1200,Tumakuru,Tumakuru,GOVERNMENT,TRUE,TRUE,TRUE
+20,Udupi District Hospital,13.3400,74.7400,Udupi,Udupi,GOVERNMENT,TRUE,TRUE,TRUE
+21,Hassan District Hospital,13.0100,76.0900,Hassan,Hassan,GOVERNMENT,TRUE,TRUE,TRUE
+22,Raichur District Hospital,16.2100,77.3600,Raichur,Raichur,GOVERNMENT,TRUE,TRUE,FALSE
+23,Bidar District Hospital,17.9100,77.5300,Bidar,Bidar,GOVERNMENT,TRUE,TRUE,TRUE
+24,Chitradurga District Hospital,14.2300,76.4000,Chitradurga,Chitradurga,GOVERNMENT,TRUE,TRUE,TRUE
+25,Mandya District Hospital,12.5200,76.9000,Mandya,Mandya,GOVERNMENT,TRUE,TRUE,FALSE
+26,Narayana Health City,12.8500,77.6000,Bengaluru Urban,Bengaluru,PRIVATE,TRUE,TRUE,TRUE
+27,Aster CMI Hospital,13.0100,77.6100,Bengaluru Urban,Bengaluru,PRIVATE,TRUE,TRUE,TRUE
+28,Columbia Asia Hospital,12.9700,77.6100,Bengaluru Urban,Bengaluru,PRIVATE,TRUE,TRUE,TRUE
+29,Vijayanagar Institute of Medical Sciences,15.3400,76.4600,Ballari,Ballari,GOVERNMENT,TRUE,TRUE,TRUE
+30,Karwar District Hospital,14.8100,74.1300,Uttara Kannada,Karwar,GOVERNMENT,TRUE,TRUE,FALSE

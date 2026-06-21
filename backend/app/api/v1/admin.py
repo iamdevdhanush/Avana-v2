@@ -774,3 +774,44 @@ async def debug_data_integrity(
     ]
 
     return result
+
+
+@router.post("/seed")
+async def admin_seed(
+    request: Request,
+    force: bool = False,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually trigger seed data population. Offline-first — no AI required."""
+    import os
+    from scripts.seed_police_hospitals import seed_police_stations, seed_hospitals
+    from scripts.seed_incidents import seed_incidents
+    from scripts.seed_risk_scores import seed_risk_scores, seed_heatmap_grid
+
+    _file_dir = os.path.dirname(os.path.abspath(__file__))
+    _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(_file_dir))))
+    SEED_DIR = os.path.join(_project_root, "seed_data")
+
+    results = {}
+
+    ps = await seed_police_stations(os.path.join(SEED_DIR, "police_stations.csv"), truncate=force)
+    results["police_stations"] = ps
+
+    hs = await seed_hospitals(os.path.join(SEED_DIR, "hospitals.csv"), truncate=force)
+    results["hospitals"] = hs
+
+    inc = await seed_incidents(os.path.join(SEED_DIR, "incidents.csv"), truncate=force)
+    results["incidents"] = inc
+
+    risk = await seed_risk_scores(truncate=force)
+    results["risk_scores"] = risk
+
+    heat = await seed_heatmap_grid()
+    results["heatmap"] = heat
+
+    await _log_admin_action(
+        request, db, admin, "seed_data", "seed",
+        details={"force": force, "results": results},
+    )
+    return {"status": "ok", "results": results}

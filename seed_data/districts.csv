@@ -1,0 +1,32 @@
+id,name,canonical_name,latitude,longitude,population_density,crime_rate_index
+1,Bengaluru Urban,Bengaluru Urban,12.9716,77.5946,4378,85.2
+2,Bengaluru Rural,Bengaluru Rural,13.1000,77.4000,441,45.1
+3,Mysuru,Mysuru,12.2958,76.6394,476,62.3
+4,Dakshina Kannada,Dakshina Kannada,12.8700,74.8800,457,58.7
+5,Udupi,Udupi,13.3409,74.7421,386,32.4
+6,Belagavi,Belagavi,15.8497,74.4977,356,48.9
+7,Dharwad,Dharwad,15.4589,75.0078,434,55.2
+8,Shivamogga,Shivamogga,13.9299,75.5681,287,41.3
+9,Tumakuru,Tumakuru,13.3379,77.1173,289,38.7
+10,Hassan,Hassan,13.0055,76.0913,311,35.6
+11,Mandya,Mandya,12.5243,76.8958,378,44.1
+12,Chikkamagaluru,Chikkamagaluru,13.3161,75.7720,178,29.3
+13,Kolar,Kolar,13.1357,78.1295,347,42.8
+14,Ballari,Ballari,15.1394,76.9214,297,51.6
+15,Vijayapura,Vijayapura,16.8302,75.7100,224,47.2
+16,Kalaburagi,Kalaburagi,17.3297,76.8343,236,53.4
+17,Raichur,Raichur,16.2059,77.3567,228,46.8
+18,Koppal,Koppal,15.3500,76.1500,267,44.3
+19,Gadag,Gadag,15.4167,75.6167,245,39.1
+20,Haveri,Haveri,14.8000,75.4000,234,36.7
+21,Davangere,Davangere,14.4667,75.9833,356,45.9
+22,Chitradurga,Chitradurga,14.2333,76.4000,212,37.2
+23,Ramanagara,Ramanagara,12.7200,77.2800,312,41.8
+24,Kodagu,Kodagu,12.4200,75.7300,134,21.5
+25,Chamarajanagara,Chamarajanagara,11.9236,76.9397,189,34.6
+26,Bagalkote,Bagalkote,16.1833,75.7000,247,43.2
+27,Bidar,Bidar,17.9133,77.5300,312,47.9
+28,Yadgir,Yadgir,16.7667,77.1333,224,41.5
+29,Uttara Kannada,Uttara Kannada,14.8500,74.5500,138,26.8
+30,Haveri,Haveri,14.8000,75.4000,234,36.7
+31,Vijayanagara,Vijayanagara,15.3350,76.4620,198,38.4
