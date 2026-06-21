@@ -332,7 +332,7 @@ async def debug_env(admin: User = Depends(require_admin)):
 
 @app.get("/health/deep")
 async def health_deep():
-    from app.database import get_engine
+    from app.database import get_engine, get_session_factory
     from sqlalchemy import text
     checks = {}
     overall = "healthy"
