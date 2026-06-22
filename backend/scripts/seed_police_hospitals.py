@@ -18,7 +18,7 @@ from app.database import Base
 
 logger = logging.getLogger(__name__)
 
-SEED_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "seed_data")
+SEED_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "seed_data")
 
 
 async def seed_police_stations(csv_path: str = None, truncate: bool = False) -> dict:

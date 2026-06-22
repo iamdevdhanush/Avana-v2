@@ -790,7 +790,7 @@ async def admin_seed(
     from scripts.seed_risk_scores import seed_risk_scores, seed_heatmap_grid
 
     _file_dir = os.path.dirname(os.path.abspath(__file__))
-    _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(_file_dir))))
+    _project_root = os.path.dirname(os.path.dirname(os.path.dirname(_file_dir)))
     SEED_DIR = os.path.join(_project_root, "seed_data")
 
     results = {}

@@ -141,7 +141,7 @@ async def _bootstrap_offline_data():
     import os
 
     _file_dir = os.path.dirname(os.path.abspath(__file__))
-    _project_root = os.path.dirname(os.path.dirname(_file_dir))
+    _project_root = os.path.dirname(_file_dir)
     SEED_DIR = os.path.join(_project_root, "seed_data")
 
     try:

@@ -20,7 +20,7 @@ from app.database import Base
 
 logger = logging.getLogger(__name__)
 
-SEED_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "seed_data")
+SEED_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "seed_data")
 
 WOMEN_SAFETY_WEIGHTS = {
     "Rape": (99.0, 1),
