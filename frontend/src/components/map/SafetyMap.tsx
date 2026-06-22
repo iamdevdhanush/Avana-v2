@@ -136,7 +136,7 @@ export const SafetyMap = memo(function SafetyMap({
         />
       )}
 
-      {selectedRoute && (
+      {selectedRoute && selectedRoute.geometry && selectedRoute.geometry.length >= 2 && (
         <Polyline
           positions={selectedRoute.geometry}
           pathOptions={{

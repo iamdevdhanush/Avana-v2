@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { Crosshair, Layers } from 'lucide-react'
 import { useMap } from 'react-leaflet'
-import { useMapStore } from '@/store/mapStore'
 import { HeatmapLegend } from './HeatmapLegend'
 import { useUIStore } from '@/store/uiStore'
 

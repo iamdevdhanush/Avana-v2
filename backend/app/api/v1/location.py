@@ -90,7 +90,6 @@ async def reverse_geocode(body: ReverseGeocodeRequest, db: AsyncSession = Depend
                 text("UPDATE geocoding_cache SET last_verified = NOW() WHERE location_text = :key"),
                 {"key": cache_key},
             )
-            await db.commit()
         except Exception:
             pass
         return ReverseGeocodeResponse(
@@ -126,10 +125,8 @@ async def reverse_geocode(body: ReverseGeocodeRequest, db: AsyncSession = Depend
             """),
             {"key": cache_key, "lat": lat, "lng": lng, "name": display_name or geo_result.get("display_name", "")},
         )
-        await db.commit()
     except Exception as e:
         logger.warning(f"Cache write failed: {e}")
-        await db.rollback()
 
     return ReverseGeocodeResponse(
         display_name=display_name or geo_result.get("display_name", f"{lat}, {lng}"),

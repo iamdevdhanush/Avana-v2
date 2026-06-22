@@ -2,12 +2,12 @@ import re
 import secrets
 import logging
 import time
-import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List, Tuple
 from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
 from jose import jwt, JWTError
+import bcrypt
 
 from app.config import settings
 
@@ -20,7 +20,6 @@ _blacklisted_tokens: set = set()
 def hash_password(password: str) -> str:
     if not password or len(password) < _MIN_PASSWORD_LENGTH:
         raise ValueError(f"Password must be at least {_MIN_PASSWORD_LENGTH} characters")
-    import bcrypt
     try:
         return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     except Exception as e:
@@ -31,7 +30,6 @@ def hash_password(password: str) -> str:
 def verify_password(plain: str, hashed: str) -> bool:
     if not hashed:
         return False
-    import bcrypt
     try:
         return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
     except Exception as e:
@@ -142,3 +140,25 @@ def sanitize_input(text: str) -> str:
     text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+# ---- Security Headers Middleware ----
+
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "X-XSS-Protection": "1; mode=block",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "geolocation=(self), camera=(), microphone=()",
+    "Cross-Origin-Embedder-Policy": "require-corp",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
+}
+
+
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    for header, value in SECURITY_HEADERS.items():
+        response.headers[header] = value
+    return response

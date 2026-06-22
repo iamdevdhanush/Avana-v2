@@ -2,7 +2,7 @@ import * as React from 'react'
 import {
   Navigation, ArrowDown, Loader2, Shield, Zap, Scale, X, Info, MapPin,
 } from 'lucide-react'
-import { cn, formatDistance, formatDuration } from '@/lib/utils'
+import { formatDistance, formatDuration } from '@/lib/utils'
 import { useRouteSafety } from '@/hooks/useRouteSafety'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { useLocationName } from '@/hooks/useLocationName'

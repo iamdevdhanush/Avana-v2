@@ -9,16 +9,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-ENV GDAL_VERSION=3.6.2 \
-    CPLUS_INCLUDE_PATH=/usr/include/gdal \
-    C_INCLUDE_PATH=/usr/include/gdal
+RUN groupadd -r avana && useradd -r -g avana -d /app -s /bin/false avana
 
 WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY --chown=avana:avana . .
+
+USER avana
 
 EXPOSE 8000
 

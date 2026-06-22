@@ -16,10 +16,21 @@ interface UseRealtimeReturn {
 }
 
 const listeners = new Set<EventHandler>()
-let mockConnected = false
+let isConnected = false
 
 function broadcastEvent(event: RealtimeEvent) {
   listeners.forEach((handler) => handler(event))
+}
+
+function buildWsUrl(channel: string): string {
+  const RAW = import.meta.env.VITE_API_URL || ''
+  const baseUrl = RAW.replace(/\/api\/v1$/, '').replace(/\/+$/, '')
+  if (baseUrl) {
+    const wsProtocol = baseUrl.startsWith('https') ? 'wss' : 'ws'
+    return `${wsProtocol}://${baseUrl.replace(/^https?:\/\//, '')}/ws/${channel}`
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  return `${protocol}://${window.location.host}/ws/${channel}`
 }
 
 export function useRealtime(channel: string = 'public'): UseRealtimeReturn {
@@ -70,17 +81,21 @@ export function useRealtime(channel: string = 'public'): UseRealtimeReturn {
     mountedRef.current = true
     listeners.add(handleEvent)
 
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/${channel}`
+    const wsUrl = buildWsUrl(channel)
+
+    let retryCount = 0
+    const maxRetries = 5
 
     function connect() {
-      if (!mountedRef.current) return
+      if (!mountedRef.current || retryCount >= maxRetries) return
 
       try {
         const ws = new WebSocket(wsUrl)
         wsRef.current = ws
 
         ws.onopen = () => {
-          mockConnected = true
+          isConnected = true
+          retryCount = 0
         }
 
         ws.onmessage = (event) => {
@@ -93,9 +108,10 @@ export function useRealtime(channel: string = 'public'): UseRealtimeReturn {
         }
 
         ws.onclose = () => {
-          mockConnected = false
-          if (mountedRef.current) {
-            reconnectTimerRef.current = setTimeout(connect, 5000)
+          isConnected = false
+          if (mountedRef.current && retryCount < maxRetries) {
+            retryCount++
+            reconnectTimerRef.current = setTimeout(connect, 5000 * retryCount)
           }
         }
 
@@ -103,9 +119,9 @@ export function useRealtime(channel: string = 'public'): UseRealtimeReturn {
           ws.close()
         }
       } catch {
-        // WebSocket not available, will retry
-        if (mountedRef.current) {
-          reconnectTimerRef.current = setTimeout(connect, 5000)
+        if (mountedRef.current && retryCount < maxRetries) {
+          retryCount++
+          reconnectTimerRef.current = setTimeout(connect, 5000 * retryCount)
         }
       }
     }
@@ -133,6 +149,6 @@ export function useRealtime(channel: string = 'public'): UseRealtimeReturn {
 
   return {
     subscribe,
-    isConnected: mockConnected,
+    isConnected,
   }
 }

@@ -17,7 +17,7 @@ from app.database import init_db, check_db, validate_schema
 from app.api.router import api_router
 from app.dependencies import require_admin
 from app.models.user import User
-from app.utils.security import rate_limit_middleware
+from app.utils.security import rate_limit_middleware, add_security_headers
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +225,7 @@ app.add_middleware(
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+app.middleware("http")(add_security_headers)
 app.middleware("http")(rate_limit_middleware)
 
 

@@ -2,6 +2,7 @@ import * as React from 'react'
 import { X, AlertTriangle, Navigation, Flag, MapPin } from 'lucide-react'
 import { useMapStore } from '@/store/mapStore'
 import { useLocationName } from '@/hooks/useLocationName'
+import { riskApi } from '@/services/api'
 
 function getRiskColor(s: number): string {
   if (s >= 0.9) return '#D50000'
@@ -79,16 +80,14 @@ export function LocationInfoPanel({ onReportArea, onGetSafeRoute, onClose }: Loc
     setIsLoading(true)
     setError(null)
     const body = { latitude: selectedLocation.lat, longitude: selectedLocation.lng }
-    import('@/services/api').then(({ riskApi }) =>
-      riskApi.getRiskScore(selectedLocation.lat, selectedLocation.lng)
-        .then((r) => {
-          const fMap: Record<string, number> = {}
-          for (const f of r.factors) fMap[f.name] = f.value
-          setRiskScore({ score: r.score, factors: fMap, recommendations: r.recommendations })
-        })
-        .catch((err: Error) => setError(err.message))
-        .finally(() => setIsLoading(false))
-    )
+    riskApi.getRiskScore(selectedLocation.lat, selectedLocation.lng)
+      .then((r) => {
+        const fMap: Record<string, number> = {}
+        for (const f of r.factors) fMap[f.name] = f.value
+        setRiskScore({ score: r.score, factors: fMap, recommendations: r.recommendations })
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setIsLoading(false))
   }, [selectedLocation])
 
   if (!selectedLocation) return null
