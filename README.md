@@ -2,7 +2,6 @@
 
 > *"How safe is this area right now?"* — Answering this for every location in Karnataka.
 
-[![CI Status](https://github.com/yourusername/avana-v2/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/avana-v2/actions)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)](https://fastapi.tiangolo.com)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB.svg)](https://react.dev)
