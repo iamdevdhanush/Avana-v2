@@ -18,10 +18,10 @@ class ReportCreate(BaseModel):
     severity: str
     latitude: float
     longitude: float
-    description: Optional[str] = None
-    address: Optional[str] = None
-    district: Optional[str] = None
-    city: Optional[str] = None
+    description: str | None = None
+    address: str | None = None
+    district: str | None = None
+    city: str | None = None
     is_anonymous: bool = False
 
 
