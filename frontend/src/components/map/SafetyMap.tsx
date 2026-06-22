@@ -90,6 +90,20 @@ interface SafetyMapProps {
   children?: React.ReactNode
 }
 
+function AutoCenter({ position }: { position: { lat: number; lng: number } | null }) {
+  const map = useMap()
+  const doneRef = useRef(false)
+
+  useEffect(() => {
+    if (position && !doneRef.current) {
+      doneRef.current = true
+      map.flyTo([position.lat, position.lng], 13, { duration: 1.5 })
+    }
+  }, [position, map])
+
+  return null
+}
+
 export const SafetyMap = memo(function SafetyMap({
   heatmapPoints = [],
   selectedRoute = null,
@@ -121,6 +135,7 @@ export const SafetyMap = memo(function SafetyMap({
       <ZoomControl position="bottomright" />
       {children}
       <MapBoundsUpdater />
+      {userLocation && <AutoCenter position={userLocation} />}
 
       {showHeatmap && heatmapPoints.length > 0 && (
         <HeatmapLayer

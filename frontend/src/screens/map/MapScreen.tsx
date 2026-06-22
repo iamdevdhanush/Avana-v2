@@ -23,6 +23,14 @@ export function MapScreen() {
   } = useHeatmap(bounds, zoom)
 
   const [showRoutePanel, setShowRoutePanel] = React.useState(false)
+  const autoSelectedRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (position.latitude && position.longitude && !autoSelectedRef.current) {
+      autoSelectedRef.current = true
+      setSelectedLocation({ lat: position.latitude, lng: position.longitude })
+    }
+  }, [position.latitude, position.longitude, setSelectedLocation])
 
   const handleHotspotClick = React.useCallback((lat: number, lng: number) => {
     setSelectedLocation({ lat, lng })
