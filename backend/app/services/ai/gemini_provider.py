@@ -60,7 +60,7 @@ class GeminiProvider(AIProvider):
             self.api_key = api_key
             self._model_name = model_name
             self._available = True
-            logger.info(f"[GEMINI] Gemini service initialized — ONLINE (model={model_name})")
+            logger.info(f"[GEMINI] Gemini service initialized -- ONLINE (model={model_name})")
         except Exception as e:
             self._available = False
             self._init_error = f"Gemini init failed: {type(e).__name__}: {e}"
@@ -101,7 +101,7 @@ class GeminiProvider(AIProvider):
             status["error"] = None
         return status
 
-    def _check_rate_limit(self):
+    async def _check_rate_limit_async(self):
         now = time.time()
         if now - self._minute_start >= 60:
             self._call_count_this_minute = 0
@@ -111,7 +111,8 @@ class GeminiProvider(AIProvider):
         self._call_count_this_minute += 1
         elapsed = now - self._last_call_time
         if elapsed < 1.0:
-            time.sleep(1.0 - elapsed)
+            import asyncio
+            await asyncio.sleep(1.0 - elapsed)
         self._last_call_time = time.time()
 
     def _is_transient(self, err: Exception) -> bool:
@@ -119,63 +120,66 @@ class GeminiProvider(AIProvider):
         return any(k in err_str for k in ["429", "503", "timeout", "rate", "internal", "unavailable", "deadline"])
 
     async def generate(self, prompt: str, system_instruction: Optional[str] = None) -> str:
-        logger.info("[GEMINI] generate() called")
+        from app.utils.timing import Timer
 
-        if not self._available:
-            logger.warning(f"[GEMINI] Unavailable: {self._init_error}")
-            return ""
-        if self._quota_until and time.time() < self._quota_until:
-            remaining = int(self._quota_until - time.time())
-            logger.warning(f"[GEMINI] Quota cooldown — {remaining}s remaining")
-            raise GeminiQuotaExceeded(f"Gemini quota cooldown — retry in {remaining}s")
+        with Timer("8. Gemini fallback request"):
+            logger.info("[GEMINI] generate() called")
 
-        import google.generativeai as genai
-        import asyncio
+            if not self._available:
+                logger.warning(f"[GEMINI] Unavailable: {self._init_error}")
+                return ""
+            if self._quota_until and time.time() < self._quota_until:
+                remaining = int(self._quota_until - time.time())
+                logger.warning(f"[GEMINI] Quota cooldown -- {remaining}s remaining")
+                raise GeminiQuotaExceeded(f"Gemini quota cooldown -- retry in {remaining}s")
 
-        loop = asyncio.get_event_loop()
+            import google.generativeai as genai
+            import asyncio
 
-        def _sync_generate():
-            for attempt in range(1, 4):
-                try:
-                    self._check_rate_limit()
-                    if system_instruction:
-                        model = genai.GenerativeModel(self._model_name or "gemini-2.0-flash", system_instruction=system_instruction)
-                    else:
-                        model = self.model
-                    response = model.generate_content(prompt, request_options={"retry": None})
-                    if not response or not response.text:
-                        logger.warning("[GEMINI] Empty response")
-                        return ""
-                    logger.info(f"[GEMINI] Response ({len(response.text)} chars)")
-                    return response.text
-                except GeminiQuotaExceeded:
-                    raise
-                except Exception as e:
-                    err_str = str(e)
-                    if "API_KEY_INVALID" in err_str or "API key" in err_str:
-                        self._available = False
-                        self._init_error = "Gemini API key invalid or rejected"
-                        logger.error(f"[GEMINI] {self._init_error}")
-                        raise GeminiAuthError(self._init_error) from e
-                    if "ACCESS_TOKEN_TYPE_UNSUPPORTED" in err_str:
-                        self._available = False
-                        self._init_error = "Gemini received OAuth token instead of API key"
-                        logger.error(f"[GEMINI] {self._init_error}")
-                        raise GeminiAuthError(self._init_error) from e
-                    if "quota" in err_str.lower() or "resource_exhausted" in err_str.lower():
-                        logger.error(f"[GEMINI] Quota exhausted: {e}")
-                        self._quota_until = time.time() + QUOTA_COOLDOWN_MINUTES * 60
-                        raise GeminiQuotaExceeded(f"Gemini quota exhausted — retry in {QUOTA_COOLDOWN_MINUTES} min") from e
-                    if self._is_transient(e) and attempt < 3:
-                        delay = 1.0 * (2 ** (attempt - 1))
-                        logger.warning(f"[GEMINI] Transient error (attempt {attempt}/3): {e}. Retry in {delay}s...")
-                        time.sleep(delay)
-                    else:
-                        logger.error(f"[GEMINI] Generation error: {e}")
-                        raise RuntimeError(f"Gemini generation failed: {e}") from e
-            raise RuntimeError("Gemini failed after 3 retries")
+            await self._check_rate_limit_async()
+            loop = asyncio.get_event_loop()
 
-        return await loop.run_in_executor(None, _sync_generate)
+            def _sync_generate():
+                for attempt in range(1, 4):
+                    try:
+                        if system_instruction:
+                            model = genai.GenerativeModel(self._model_name or "gemini-2.0-flash", system_instruction=system_instruction)
+                        else:
+                            model = self.model
+                        response = model.generate_content(prompt, request_options={"retry": None})
+                        if not response or not response.text:
+                            logger.warning("[GEMINI] Empty response")
+                            return ""
+                        logger.info(f"[GEMINI] Response ({len(response.text)} chars)")
+                        return response.text
+                    except GeminiQuotaExceeded:
+                        raise
+                    except Exception as e:
+                        err_str = str(e)
+                        if "API_KEY_INVALID" in err_str or "API key" in err_str:
+                            self._available = False
+                            self._init_error = "Gemini API key invalid or rejected"
+                            logger.error(f"[GEMINI] {self._init_error}")
+                            raise GeminiAuthError(self._init_error) from e
+                        if "ACCESS_TOKEN_TYPE_UNSUPPORTED" in err_str:
+                            self._available = False
+                            self._init_error = "Gemini received OAuth token instead of API key"
+                            logger.error(f"[GEMINI] {self._init_error}")
+                            raise GeminiAuthError(self._init_error) from e
+                        if "quota" in err_str.lower() or "resource_exhausted" in err_str.lower():
+                            logger.error(f"[GEMINI] Quota exhausted: {e}")
+                            self._quota_until = time.time() + QUOTA_COOLDOWN_MINUTES * 60
+                            raise GeminiQuotaExceeded(f"Gemini quota exhausted -- retry in {QUOTA_COOLDOWN_MINUTES} min") from e
+                        if self._is_transient(e) and attempt < 3:
+                            delay = 1.0 * (2 ** (attempt - 1))
+                            logger.warning(f"[GEMINI] Transient error (attempt {attempt}/3): {e}. Retry in {delay}s...")
+                            time.sleep(delay)
+                        else:
+                            logger.error(f"[GEMINI] Generation error: {e}")
+                            raise RuntimeError(f"Gemini generation failed: {e}") from e
+                raise RuntimeError("Gemini failed after 3 retries")
+
+            return await loop.run_in_executor(None, _sync_generate)
 
     async def generate_structured(self, prompt: str, system_instruction: str) -> dict:
         text = await self.generate(prompt, system_instruction)

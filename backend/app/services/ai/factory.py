@@ -141,33 +141,36 @@ def get_ai_provider() -> AIProvider:
     3. If no key configured → returns a provider that reports unavailable
        (agents fall through to mock mode naturally)
     """
+    from app.utils.timing import Timer
+
     global _provider_instance
     if _provider_instance is not None:
         return _provider_instance
 
-    from app.config import settings
-    from app.services.ai.openrouter_provider import OpenRouterProvider
+    with Timer("6. AI provider initialization"):
+        from app.config import settings
+        from app.services.ai.openrouter_provider import OpenRouterProvider
 
-    db_config = _provider_config
-    if db_config:
-        logger.info(f"[AI_FACTORY] Using database config: {db_config['provider']}/{db_config['model']}")
-        _provider_instance = _build_provider_from_config(db_config)
+        db_config = _provider_config
+        if db_config:
+            logger.info(f"[AI_FACTORY] Using database config: {db_config['provider']}/{db_config['model']}")
+            _provider_instance = _build_provider_from_config(db_config)
+            return _provider_instance
+
+        provider_name = (settings.AI_PROVIDER or "auto").strip().lower()
+
+        gemini = GeminiProvider()
+        openrouter = OpenRouterProvider()
+
+        if provider_name == "gemini":
+            _provider_instance = gemini
+        elif provider_name == "openrouter":
+            _provider_instance = openrouter
+        else:
+            _provider_instance = FallbackProvider([gemini, openrouter])
+
+        logger.info(f"[AI_FACTORY] Provider initialized from env: {_provider_instance.name}")
         return _provider_instance
-
-    provider_name = (settings.AI_PROVIDER or "auto").strip().lower()
-
-    gemini = GeminiProvider()
-    openrouter = OpenRouterProvider()
-
-    if provider_name == "gemini":
-        _provider_instance = gemini
-    elif provider_name == "openrouter":
-        _provider_instance = openrouter
-    else:
-        _provider_instance = FallbackProvider([gemini, openrouter])
-
-    logger.info(f"[AI_FACTORY] Provider initialized from env: {_provider_instance.name}")
-    return _provider_instance
 
 
 def reset_ai_provider():

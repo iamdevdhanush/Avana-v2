@@ -4,10 +4,10 @@ Pipeline Orchestrator
 Sequences agents, tracks execution, handles failures, persists run metrics.
 
 Supported pipelines:
-  • "news"       → NewsAgent → GeoAgent → RiskAgent
-  • "community"  → CommunityAgent → RiskAgent
-  • "risk"       → RiskAgent (recalculate only)
-  • "heatmap"    → RiskAgent (heatmap only)
+  * "news"       -> NewsAgent -> GeoAgent -> RiskAgent
+  * "community"  -> CommunityAgent -> RiskAgent
+  * "risk"       -> RiskAgent (recalculate only)
+  * "heatmap"    -> RiskAgent (heatmap only)
 
 Usage (from admin API):
     orchestrator = PipelineOrchestrator()
@@ -25,6 +25,7 @@ from app.agents.community_intelligence import CommunityIntelligenceAgent
 from app.agents.geospatial_intelligence import GeospatialIntelligenceAgent
 from app.agents.risk_intelligence import RiskIntelligenceAgent
 from app.database import get_session_factory
+from app.utils.timing import Timer
 
 logger = logging.getLogger(__name__)
 
@@ -32,23 +33,11 @@ _VALID_PIPELINES = frozenset({"news", "community", "risk", "heatmap"})
 
 
 class PipelineOrchestrator:
-    """
-    Sequences the five intelligence agents and persists execution records.
-
-    Each run is recorded in pipeline_runs table with per-step metrics,
-    allowing the admin /pipeline/runs endpoint to show real observability
-    rather than relying on audit_log heuristics.
-    """
-
     def __init__(self):
         self._news_agent = NewsIntelligenceAgent()
         self._community_agent = CommunityIntelligenceAgent()
         self._geo_agent = GeospatialIntelligenceAgent()
         self._risk_agent = RiskIntelligenceAgent()
-
-    # ──────────────────────────────────────────────────────────────────
-    # Public entry point
-    # ──────────────────────────────────────────────────────────────────
 
     async def run(
         self,
@@ -56,51 +45,46 @@ class PipelineOrchestrator:
         triggered_by: str = "admin",
         mock_mode: bool = False,
     ) -> dict:
-        """
-        Execute a named pipeline and return a structured result dict.
-
-        Raises ValueError for unknown pipeline names.
-        Never raises for agent failures — those are captured in result["steps"].
-        """
         if pipeline_name not in _VALID_PIPELINES:
             raise ValueError(
                 f"Unknown pipeline '{pipeline_name}'. "
                 f"Valid options: {sorted(_VALID_PIPELINES)}"
             )
 
-        run_id = str(uuid.uuid4())
-        start = time.time()
-        logger.info(
-            f"[ORCHESTRATOR] Starting pipeline='{pipeline_name}' "
-            f"run_id={run_id} triggered_by={triggered_by}"
-        )
-
-        db_run_id = await self._create_run_record(run_id, pipeline_name, triggered_by)
-        steps: dict = {}
-
-        try:
-            if pipeline_name == "news":
-                steps = await self._run_news_pipeline(mock_mode)
-            elif pipeline_name == "community":
-                steps = await self._run_community_pipeline()
-            elif pipeline_name == "risk":
-                steps = await self._run_risk_pipeline()
-            elif pipeline_name == "heatmap":
-                steps = await self._run_heatmap_pipeline()
-
-            overall_status = (
-                "failed"
-                if any(
-                    isinstance(v, dict) and v.get("status") == "failed"
-                    for v in steps.values()
-                )
-                else "completed"
+        with Timer("2. ORCHESTRATOR.run()"):
+            run_id = str(uuid.uuid4())
+            start = time.time()
+            logger.info(
+                f"[ORCHESTRATOR] Starting pipeline='{pipeline_name}' "
+                f"run_id={run_id} triggered_by={triggered_by}"
             )
 
-        except Exception as exc:
-            overall_status = "failed"
-            steps["fatal"] = {"status": "failed", "error": str(exc)}
-            logger.exception(f"[ORCHESTRATOR] Fatal error in pipeline '{pipeline_name}': {exc}")
+            db_run_id = await self._create_run_record(run_id, pipeline_name, triggered_by)
+            steps: dict = {}
+
+            try:
+                if pipeline_name == "news":
+                    steps = await self._run_news_pipeline(mock_mode)
+                elif pipeline_name == "community":
+                    steps = await self._run_community_pipeline()
+                elif pipeline_name == "risk":
+                    steps = await self._run_risk_pipeline()
+                elif pipeline_name == "heatmap":
+                    steps = await self._run_heatmap_pipeline()
+
+                overall_status = (
+                    "failed"
+                    if any(
+                        isinstance(v, dict) and v.get("status") == "failed"
+                        for v in steps.values()
+                    )
+                    else "completed"
+                )
+
+            except Exception as exc:
+                overall_status = "failed"
+                steps["fatal"] = {"status": "failed", "error": str(exc)}
+                logger.exception(f"[ORCHESTRATOR] Fatal error in pipeline '{pipeline_name}': {exc}")
 
         duration_s = round(time.time() - start, 2)
         summary = self._build_summary(pipeline_name, steps, duration_s)
@@ -122,46 +106,39 @@ class PipelineOrchestrator:
             "triggered_by": triggered_by,
         }
 
-    # ──────────────────────────────────────────────────────────────────
-    # Pipeline sequences
-    # ──────────────────────────────────────────────────────────────────
-
     async def _run_news_pipeline(self, mock_mode: bool = False) -> dict:
-        """News → Geospatial → Risk"""
+        """News -> Geospatial -> Risk"""
         steps: dict = {}
 
-        # 1. News Intelligence
         news_result = await self._run_agent(self._news_agent, mock_mode=mock_mode)
         steps["news"] = self._extract_step_metric(news_result, "news")
 
         if news_result.get("status") == "failed":
-            logger.error("[ORCHESTRATOR] News agent failed — aborting pipeline")
+            logger.error("[ORCHESTRATOR] News agent failed -- aborting pipeline")
             return steps
 
         incidents = news_result.get("incidents", [])
         if not incidents:
-            logger.info("[ORCHESTRATOR] No incidents extracted — skipping geo + risk")
+            logger.info("[ORCHESTRATOR] No incidents extracted -- skipping geo + risk")
             steps["geo"] = {"status": "skipped", "reason": "no_incidents"}
             steps["risk"] = {"status": "skipped", "reason": "no_incidents"}
             return steps
 
-        # 2. Geospatial Intelligence
         geo_result = await self._run_agent(self._geo_agent, incidents=incidents)
         steps["geo"] = self._extract_step_metric(geo_result, "geo")
 
         if geo_result.get("saved", 0) == 0:
-            logger.warning("[ORCHESTRATOR] No incidents saved — skipping risk refresh")
+            logger.warning("[ORCHESTRATOR] No incidents saved -- skipping risk refresh")
             steps["risk"] = {"status": "skipped", "reason": "no_saved_incidents"}
             return steps
 
-        # 3. Risk Intelligence
         risk_result = await self._run_agent(self._risk_agent, full_heatmap=True)
         steps["risk"] = self._extract_step_metric(risk_result, "risk")
 
         return steps
 
     async def _run_community_pipeline(self) -> dict:
-        """Community → Risk (if any incidents were created)"""
+        """Community -> Risk (if any incidents were created)"""
         steps: dict = {}
 
         community_result = await self._run_agent(self._community_agent)
@@ -185,10 +162,6 @@ class PipelineOrchestrator:
         risk_result = await self._run_agent(self._risk_agent, full_heatmap=True)
         return {"heatmap": self._extract_step_metric(risk_result, "heatmap")}
 
-    # ──────────────────────────────────────────────────────────────────
-    # Agent runner — wraps each agent call with error capture
-    # ──────────────────────────────────────────────────────────────────
-
     async def _run_agent(self, agent, **kwargs) -> dict:
         agent_name = getattr(agent, "name", type(agent).__name__)
         try:
@@ -201,11 +174,9 @@ class PipelineOrchestrator:
 
     @staticmethod
     def _extract_step_metric(result: dict, step_name: str) -> dict:
-        """Flatten agent result into a compact step metric dict."""
         if result.get("status") == "failed":
             return {"status": "failed", "error": result.get("error", "unknown")}
         metrics = result.get("metrics", {})
-        # Flatten nested metrics into one level
         flat: dict = {"status": "ok"}
         for key, val in metrics.items():
             if isinstance(val, dict):
@@ -213,15 +184,10 @@ class PipelineOrchestrator:
                     flat[f"{key}_{k}"] = v
             else:
                 flat[key] = val
-        # Pull up top-level counts that agents return directly
         for direct_key in ("saved", "skipped", "verified", "duplicates", "spam", "processed"):
             if direct_key in result:
                 flat[direct_key] = result[direct_key]
         return flat
-
-    # ──────────────────────────────────────────────────────────────────
-    # Summary
-    # ──────────────────────────────────────────────────────────────────
 
     @staticmethod
     def _build_summary(pipeline_name: str, steps: dict, duration_s: float) -> dict:
@@ -232,7 +198,6 @@ class PipelineOrchestrator:
             "failed_steps": [k for k, v in steps.items() if isinstance(v, dict) and v.get("status") == "failed"],
         }
 
-        # Aggregate key metrics per pipeline type
         if pipeline_name == "news":
             summary["articles_fetched"] = (steps.get("news") or {}).get("fetch_count", 0)
             summary["incidents_extracted"] = (steps.get("news") or {}).get("extract_count", 0)
@@ -254,17 +219,12 @@ class PipelineOrchestrator:
 
         return summary
 
-    # ──────────────────────────────────────────────────────────────────
-    # Pipeline run persistence
-    # ──────────────────────────────────────────────────────────────────
-
     async def _create_run_record(
         self,
         run_id: str,
         pipeline_type: str,
         triggered_by: str,
     ) -> Optional[str]:
-        """Insert a pipeline_runs row and return its id (or None on failure)."""
         try:
             factory = get_session_factory()
             from app.models.pipeline_run import PipelineRun
@@ -290,7 +250,6 @@ class PipelineOrchestrator:
         steps: dict,
         summary: dict,
     ) -> None:
-        """Update the pipeline_runs row with final status and metrics."""
         if not run_id:
             return
         try:
@@ -316,5 +275,4 @@ class PipelineOrchestrator:
             logger.warning(f"[ORCHESTRATOR] Could not update pipeline_runs record: {exc}")
 
 
-# Singleton for import convenience
 orchestrator = PipelineOrchestrator()

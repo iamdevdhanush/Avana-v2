@@ -446,10 +446,12 @@ async def run_pipeline(
         )
 
     try:
-        result = await _orchestrator.run(
-            pipeline_name=resolved_name,
-            triggered_by=f"admin:{admin.email}",
-        )
+        from app.utils.timing import Timer
+        with Timer("1. PIPELINE ENDPOINT (_orchestrator.run)"):
+            result = await _orchestrator.run(
+                pipeline_name=resolved_name,
+                triggered_by=f"admin:{admin.email}",
+            )
 
         # Persist audit log entry (keeps existing audit trail working)
         summary = result.get("summary", {})
