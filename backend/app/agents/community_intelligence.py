@@ -29,7 +29,7 @@ from app.pipeline.women_safety import (
     get_women_safety_details,
     is_women_safety_category,
 )
-from app.services.gemini import gemini_service
+from app.services.ai.factory import get_ai_provider
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,7 @@ class CommunityIntelligenceAgent:
 
     def __init__(self):
         self._categories_list = sorted(WOMEN_SAFETY_CATEGORIES.keys())
+        self._ai = get_ai_provider()
 
     async def run(self) -> dict:
         start = time.time()
@@ -143,14 +144,13 @@ class CommunityIntelligenceAgent:
     # ──────────────────────────────────────────────────────────────────
 
     async def _classify(self, reports: List[dict]) -> List[dict]:
-        gemini_available = gemini_service.is_available()
-        if not gemini_available:
-            logger.warning("[COMMUNITY_AGENT] Gemini unavailable — passthrough classification")
+        ai_available = self._ai.is_available()
+        if not ai_available:
+            logger.warning("[COMMUNITY_AGENT] AI provider unavailable — passthrough classification")
 
-        import asyncio
         classified = []
         for report in reports:
-            if not gemini_available:
+            if not ai_available:
                 report.update({
                     "validated_type": report.get("incident_type", "OTHER"),
                     "validated_severity": report.get("severity", "MEDIUM"),
@@ -176,13 +176,9 @@ class CommunityIntelligenceAgent:
                 f"Description: {report.get('description', '')[:500]}"
             )
             try:
-                loop = asyncio.get_event_loop()
-                parsed = await loop.run_in_executor(
-                    None,
-                    lambda p=prompt: gemini_service.generate_structured(
-                        p,
-                        "You are a community report validator. Return ONLY valid JSON.",
-                    ),
+                parsed = await self._ai.generate_structured(
+                    prompt,
+                    "You are a community report validator. Return ONLY valid JSON.",
                 )
                 report["validated_type"] = parsed.get("validated_type", report.get("incident_type"))
                 report["validated_severity"] = parsed.get("validated_severity", report.get("severity"))
@@ -192,7 +188,7 @@ class CommunityIntelligenceAgent:
                 report["classification_notes"] = parsed.get("notes", "")
                 report["women_safety_category"] = parsed.get("women_safety_category")
             except Exception as exc:
-                logger.warning(f"[COMMUNITY_AGENT] Gemini failed for report {report.get('id')}: {exc}")
+                logger.warning(f"[COMMUNITY_AGENT] AI classification failed for report {report.get('id')}: {exc}")
                 report.update({
                     "validated_type": report.get("incident_type", "OTHER"),
                     "validated_severity": report.get("severity", "MEDIUM"),

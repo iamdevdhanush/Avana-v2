@@ -20,6 +20,10 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: Optional[str] = None
 
+    AI_PROVIDER: str = "auto"
+    OPENROUTER_API_KEY: Optional[str] = None
+    OPENROUTER_MODEL: str = "openai/gpt-4o-mini"
+
     RATE_LIMIT_MAX: int = 100
     RATE_LIMIT_WINDOW: int = 60
 

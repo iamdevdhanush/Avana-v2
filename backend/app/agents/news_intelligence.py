@@ -18,7 +18,8 @@ from typing import List
 
 from app.models.incident import IncidentType
 from app.pipeline.women_safety import WOMEN_SAFETY_CATEGORIES
-from app.services.gemini import gemini_service, GeminiQuotaExceeded
+from app.services.ai.factory import get_ai_provider
+from app.services.ai.gemini_provider import GeminiQuotaExceeded
 from app.services.news_scraper import NewsScraper
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,7 @@ class NewsIntelligenceAgent:
 
     def __init__(self):
         self._categories_list = sorted(WOMEN_SAFETY_CATEGORIES.keys())
+        self._ai = get_ai_provider()
 
     # ──────────────────────────────────────────────────────────────────
     # Public entry point
@@ -84,12 +86,11 @@ class NewsIntelligenceAgent:
         start = time.time()
         logger.info("[NEWS_AGENT] Starting news intelligence cycle")
 
-        # Resolve mock mode if not forced externally
         if not mock_mode:
             from app.config import settings
             mock_mode = settings.MOCK_INTELLIGENCE_MODE
-            if not mock_mode and gemini_service.get_unavailable_reason():
-                logger.info("[NEWS_AGENT] Gemini unavailable — switching to mock mode")
+            if not mock_mode and not self._ai.is_available():
+                logger.info("[NEWS_AGENT] AI provider unavailable — switching to mock mode")
                 mock_mode = True
 
         if mock_mode:
@@ -299,11 +300,7 @@ class NewsIntelligenceAgent:
         )
 
         import json
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: gemini_service.generate(prompt, system_instruction=system),
-        )
+        response = await self._ai.generate(prompt, system_instruction=system)
         if not response:
             return []
 
@@ -324,5 +321,5 @@ class NewsIntelligenceAgent:
                 inc["article_title"] = article.get("title", "")
             return incidents
         except (json.JSONDecodeError, ValueError) as exc:
-            logger.warning(f"[NEWS_AGENT] Failed to parse Gemini JSON: {exc}")
+            logger.warning(f"[NEWS_AGENT] Failed to parse AI JSON: {exc}")
             return []

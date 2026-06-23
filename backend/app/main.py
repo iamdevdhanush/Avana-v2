@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
     await _run_alembic_migrations()
     await _ensure_risk_scores_constraint()
     asyncio.create_task(_bootstrap_offline_data())
-    asyncio.create_task(_gemini_diagnostics())
+    asyncio.create_task(_ai_diagnostics())
 
     yield
     logger.info("Shutting down")
@@ -111,25 +111,25 @@ async def _ensure_risk_scores_constraint():
         logger.error(f"[SCHEMA] Failed to ensure constraint: {e}")
 
 
-async def _gemini_diagnostics():
-    """Diagnose Gemini status for logging/health only. Never required for data."""
+async def _ai_diagnostics():
+    """Diagnose AI provider status for logging/health only. Never required for data."""
     try:
-        from app.services.gemini import gemini_service as gs
-        import google.generativeai as genai
-        sd = gs.get_status()
-        init_err = getattr(gs, '_init_error', None)
+        from app.services.ai.factory import get_ai_provider
+        ai = get_ai_provider()
+        status = ai.get_status()
         logger.info(
-            f"[GEMINI_DIAG] enabled={bool(settings.GEMINI_API_KEY)} "
-            f"key_present={bool(settings.GEMINI_API_KEY and len(settings.GEMINI_API_KEY) >= 10)} "
-            f"key_length={len(settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else 0} "
-            f"sdk=google-generativeai-{genai.__version__} "
-            f"status={sd.get('status', 'unknown')} "
-            f"init_error={init_err}"
+            f"[AI_DIAG] provider={ai.name} "
+            f"available={status.get('available')} "
+            f"status={status.get('status', 'unknown')} "
+            f"error={status.get('error')} "
+            f"gemini_key_present={bool(settings.GEMINI_API_KEY)} "
+            f"openrouter_key_present={bool(settings.OPENROUTER_API_KEY)} "
+            f"ai_provider={settings.AI_PROVIDER}"
         )
-        if sd.get("status") != "ONLINE":
-            logger.warning(f"[GEMINI_DIAG] Gemini NOT available: status={sd.get('status')} error={sd.get('error')} init_error={init_err}")
+        if not status.get("available"):
+            logger.warning(f"[AI_DIAG] No AI provider available — agents will use mock mode")
     except Exception as diag_err:
-        logger.warning(f"[GEMINI_DIAG] diagnostic failed: {diag_err}")
+        logger.warning(f"[AI_DIAG] diagnostic failed: {diag_err}")
 
 
 async def _bootstrap_offline_data():
@@ -346,10 +346,13 @@ async def health_deep():
     except Exception as e:
         checks["database"] = f"disconnected: {e}"
         overall = "unhealthy"
-    from app.services.gemini import gemini_service
-    gs = gemini_service.get_status()
-    checks["gemini"] = gs.get("status", "unknown")
-    checks["gemini_optional"] = True
+    from app.services.ai.factory import get_ai_provider
+    ai = get_ai_provider()
+    ai_status = ai.get_status()
+    checks["ai_provider"] = ai.name
+    checks["ai_status"] = ai_status.get("status", "unknown")
+    checks["ai_available"] = ai_status.get("available", False)
+    checks["ai_optional"] = True
     from app.config import settings
     checks["mock_mode"] = settings.MOCK_INTELLIGENCE_MODE
     async with get_session_factory()() as session:
@@ -408,83 +411,63 @@ async def health_database():
         )
 
 
-@app.get("/health/gemini")
-async def health_gemini():
-    from app.services.gemini import gemini_service, GeminiQuotaExceeded
-    status = gemini_service.get_status()
-    if status.get("status") == "QUOTA_EXCEEDED":
+@app.get("/health/ai")
+async def health_ai():
+    from app.services.ai.factory import get_ai_provider
+    ai = get_ai_provider()
+    status = ai.get_status()
+    provider_name = ai.name
+
+    if status.get("status") in ("QUOTA_EXCEEDED", "OFFLINE"):
         return {
             "status": "unavailable",
-            "detail": "Gemini API quota exceeded",
+            "provider": provider_name,
+            "detail": status.get("error", f"{provider_name} not available"),
             "note": "Women-safety classification uses keyword fallback",
         }
-    if status.get("status") == "OFFLINE":
-        return {
-            "status": "unavailable",
-            "detail": status.get("error", "Gemini API not configured or unreachable"),
-            "note": "Women-safety classification uses keyword fallback",
-        }
-    import asyncio
     try:
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: gemini_service.generate("Respond with only the word: OK"),
-        )
+        result = await ai.generate("Respond with only the word: OK")
         if result and "OK" in result:
-            return {"status": "available", "model": "gemini-2.0-flash"}
+            return {"status": "available", "provider": provider_name}
         return {
             "status": "unavailable",
-            "detail": "Gemini test request returned unexpected response",
-            "note": "Women-safety classification uses keyword fallback",
-        }
-    except GeminiQuotaExceeded:
-        return {
-            "status": "unavailable",
-            "detail": "Gemini API quota exceeded",
+            "provider": provider_name,
+            "detail": "AI test request returned unexpected response",
             "note": "Women-safety classification uses keyword fallback",
         }
     except Exception as e:
-        logger.error(f"Gemini health check failed: {e}")
+        logger.error(f"AI health check failed: {e}")
         return {
             "status": "unavailable",
-            "detail": "Gemini API not configured or unreachable",
+            "provider": provider_name,
+            "detail": "AI provider not configured or unreachable",
             "note": "Women-safety classification uses keyword fallback",
         }
 
 
-@app.get("/api/v1/debug/gemini")
-async def debug_gemini(admin: User = Depends(require_admin)):
-    from app.services.gemini import gemini_service, GeminiQuotaExceeded, GeminiAuthError
-    import google.generativeai as genai
+@app.get("/api/v1/debug/ai")
+async def debug_ai(admin: User = Depends(require_admin)):
+    from app.services.ai.factory import get_ai_provider
+    from app.services.ai.gemini_provider import GeminiQuotaExceeded, GeminiAuthError
+
+    ai = get_ai_provider()
+    ai_status = ai.get_status()
 
     result = {
         "status": "failure",
         "diagnostics": {
+            "AI_PROVIDER": settings.AI_PROVIDER,
+            "configured_provider": ai.name,
             "GEMINI_API_KEY_configured": bool(settings.GEMINI_API_KEY),
             "GEMINI_API_KEY_length": len(settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else 0,
-            "GEMINI_API_KEY_prefix": (settings.GEMINI_API_KEY[:6] + "...") if settings.GEMINI_API_KEY and len(settings.GEMINI_API_KEY) >= 6 else "N/A",
-            "sdk": f"google-generativeai-{genai.__version__}",
-            "auth_method": "api_key (genai.configure)",
-            "service_status": gemini_service.get_status(),
+            "OPENROUTER_API_KEY_configured": bool(settings.OPENROUTER_API_KEY),
+            "OPENROUTER_MODEL": settings.OPENROUTER_MODEL,
+            "provider_status": ai_status,
         },
     }
 
-    if not settings.GEMINI_API_KEY:
-        result["error"] = "GEMINI_API_KEY not configured"
-        return JSONResponse(status_code=503, content=result)
-
-    if len(settings.GEMINI_API_KEY) < 10:
-        result["error"] = "GEMINI_API_KEY too short (< 10 chars)"
-        return JSONResponse(status_code=503, content=result)
-
-    import asyncio
-    loop = asyncio.get_event_loop()
     try:
-        resp = await loop.run_in_executor(
-            None,
-            lambda: gemini_service.generate("Reply with OK"),
-        )
+        resp = await ai.generate("Reply with OK")
         if resp and "OK" in resp:
             result["status"] = "success"
             result["response"] = resp
@@ -496,18 +479,7 @@ async def debug_gemini(admin: User = Depends(require_admin)):
         return JSONResponse(status_code=429, content=result)
     except GeminiAuthError as e:
         result["error"] = f"AUTH_FAILED: {e}"
-        result["diagnostics"]["auth_error_detail"] = str(e)
         return JSONResponse(status_code=401, content=result)
     except Exception as e:
-        err_str = str(e)
-        if "ACCESS_TOKEN_TYPE_UNSUPPORTED" in err_str:
-            result["error"] = (
-                "AUTH_FAILED: ACCESS_TOKEN_TYPE_UNSUPPORTED — Gemini API received an OAuth token "
-                "instead of an API key. This means genai.configure(api_key=...) did not apply. "
-                "Check that GEMINI_API_KEY env var is set correctly in Render dashboard "
-                "(no quotes, no whitespace)."
-            )
-            result["diagnostics"]["auth_error_detail"] = err_str
-            return JSONResponse(status_code=401, content=result)
         result["error"] = str(e)
         return JSONResponse(status_code=503, content=result)

@@ -18,12 +18,7 @@ from app.schemas.admin import (
     UserManagementResponse,
 )
 from app.schemas.analytics import DashboardStats, DistrictStats, TypeStats, TrendPoint, AlertItem
-from app.services.gemini import GeminiQuotaExceeded
-# Legacy pipeline functions (still used by orchestrator internally)
-from app.pipeline.intelligence import run_intelligence_pipeline
-from app.pipeline.community import process_pending_reports
-from app.pipeline.risk import recalculate_all_risk_scores
-from app.pipeline.heatmap import generate_heatmap_for_bounds
+from app.services.ai.gemini_provider import GeminiQuotaExceeded
 # Agent orchestrator — primary execution path
 from app.pipeline.orchestrator import orchestrator as _orchestrator
 
@@ -490,12 +485,12 @@ async def run_pipeline(
         await _log_admin_action(
             request, db, admin, "run_pipeline_failed", "pipeline",
             resolved_name,
-            {"pipeline": resolved_name, "status": "failed", "reason": "GEMINI_QUOTA_EXCEEDED", "error": str(exc)},
+            {"pipeline": resolved_name, "status": "failed", "reason": "AI_QUOTA_EXCEEDED", "error": str(exc)},
             "error",
         )
         await db.commit()
-        from app.services.gemini import gemini_service
-        retry_after = gemini_service.get_status().get("retry_after_seconds", 900)
+        from app.services.ai.factory import get_ai_provider
+        retry_after = get_ai_provider().get_status().get("retry_after_seconds", 900)
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
@@ -668,15 +663,15 @@ async def debug_data_integrity(
     from app.config import settings
     result["mock_mode_enabled"] = settings.MOCK_INTELLIGENCE_MODE
 
-    # Real Gemini service status
-    from app.services.gemini import gemini_service
-    gs_status = gemini_service.get_status()
+    # AI provider status
+    from app.services.ai.factory import get_ai_provider
+    ai = get_ai_provider()
+    ai_status = ai.get_status()
+    result["ai_provider"] = ai.name
+    result["ai_status"] = ai_status.get("status", "unknown")
+    result["ai_error"] = ai_status.get("error")
     result["gemini_key_configured"] = bool(settings.GEMINI_API_KEY and len(settings.GEMINI_API_KEY) >= 10)
     result["gemini_key_length"] = len(settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else 0
-    result["gemini_status"] = gs_status.get("status", "unknown")
-    result["gemini_error"] = gs_status.get("error")
-    result["gemini_init_error"] = getattr(gemini_service, '_init_error', None)
-    result["gemini_quota_cooldown"] = gs_status.get("retry_after_seconds", 0) if gs_status.get("status") == "QUOTA_EXCEEDED" else 0
 
     # Incident counts
     total_inc = await db.execute(text("SELECT COUNT(*) FROM incidents"))

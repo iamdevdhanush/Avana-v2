@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.chat import ChatRequest, ChatResponse
+import app.services.ai.factory
 
 router = APIRouter(prefix="/chat", tags=["AI Chat"])
 
@@ -13,8 +14,7 @@ async def send_message(
     user: User = Depends(get_current_user),
 ):
     try:
-        from app.services.gemini import GeminiService
-        gemini = GeminiService()
+        ai = app.services.ai.factory.get_ai_provider()
 
         system_prompt = (
             "You are Avana Safety Assistant, an AI specialized in women's safety in Karnataka, India. "
@@ -38,7 +38,7 @@ async def send_message(
 
         prompt = f"{location_context}\n\nUser message: {body.message}"
 
-        response_text = gemini.generate(
+        response_text = await ai.generate(
             prompt,
             system_instruction=system_prompt,
         )
@@ -51,7 +51,7 @@ async def send_message(
     except ImportError:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="AI chat service not available. Configure GEMINI_API_KEY.",
+            detail="AI chat service not available. Configure GEMINI_API_KEY or OPENROUTER_API_KEY.",
         )
     except Exception as e:
         raise HTTPException(
@@ -63,18 +63,17 @@ async def send_message(
 @router.get("/test")
 async def test_ai():
     try:
-        from app.services.gemini import GeminiService
-        gemini = GeminiService()
-        response = gemini.generate("Say 'Avana AI is operational' and nothing else.")
+        ai = app.services.ai.factory.get_ai_provider()
+        response = await ai.generate("Say 'Avana AI is operational' and nothing else.")
         return {
             "status": "ok",
             "response": response.strip(),
-            "model": "gemini",
+            "provider": ai.name,
         }
     except ImportError:
         return {
             "status": "unavailable",
-            "detail": "Gemini service not configured",
+            "detail": "No AI provider configured",
         }
     except Exception as e:
         return {
