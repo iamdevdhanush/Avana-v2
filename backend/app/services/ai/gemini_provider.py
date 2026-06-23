@@ -22,6 +22,10 @@ class GeminiAuthError(Exception):
 class GeminiProvider(AIProvider):
     name = "gemini"
 
+    @property
+    def model_name(self) -> str:
+        return "gemini-2.0-flash"
+
     def __init__(self):
         self.api_key = None
         self.model = None

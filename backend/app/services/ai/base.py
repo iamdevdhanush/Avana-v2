@@ -8,6 +8,10 @@ logger = logging.getLogger(__name__)
 class AIProvider(ABC):
     name: str = "unknown"
 
+    @property
+    def model_name(self) -> str:
+        return "unknown"
+
     @abstractmethod
     async def generate(self, prompt: str, system_instruction: Optional[str] = None) -> str:
         """Generate text response from the AI model."""

@@ -14,6 +14,11 @@ class FallbackProvider(AIProvider):
 
     name = "fallback"
 
+    @property
+    def model_name(self) -> str:
+        models = [p.model_name for p in self.providers if p.is_available()]
+        return models[0] if models else "unknown"
+
     def __init__(self, providers: List[AIProvider]):
         self.providers = providers
 

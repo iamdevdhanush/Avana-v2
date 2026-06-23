@@ -416,32 +416,47 @@ async def health_ai():
     from app.services.ai.factory import get_ai_provider
     ai = get_ai_provider()
     status = ai.get_status()
-    provider_name = ai.name
+    is_avail = ai.is_available()
 
-    if status.get("status") in ("QUOTA_EXCEEDED", "OFFLINE"):
+    fallback_state = "none"
+    if ai.name == "fallback":
+        prov_statuses = status.get("providers", {})
+        avail_names = [n for n, s in prov_statuses.items() if s.get("available")]
+        fallback_state = f"primary={avail_names[0]}" if avail_names else "all_unavailable"
+
+    if not is_avail:
         return {
             "status": "unavailable",
-            "provider": provider_name,
-            "detail": status.get("error", f"{provider_name} not available"),
-            "note": "Women-safety classification uses keyword fallback",
+            "provider": ai.name,
+            "model": ai.model_name,
+            "fallback_state": fallback_state,
+            "detail": status.get("error", f"{ai.name} not available"),
         }
+
     try:
         result = await ai.generate("Respond with only the word: OK")
         if result and "OK" in result:
-            return {"status": "available", "provider": provider_name}
+            return {
+                "status": "available",
+                "provider": ai.name,
+                "model": ai.model_name,
+                "fallback_state": fallback_state,
+            }
         return {
             "status": "unavailable",
-            "provider": provider_name,
+            "provider": ai.name,
+            "model": ai.model_name,
+            "fallback_state": fallback_state,
             "detail": "AI test request returned unexpected response",
-            "note": "Women-safety classification uses keyword fallback",
         }
     except Exception as e:
         logger.error(f"AI health check failed: {e}")
         return {
             "status": "unavailable",
-            "provider": provider_name,
+            "provider": ai.name,
+            "model": ai.model_name,
+            "fallback_state": fallback_state,
             "detail": "AI provider not configured or unreachable",
-            "note": "Women-safety classification uses keyword fallback",
         }
 
 

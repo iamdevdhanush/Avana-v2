@@ -6,13 +6,12 @@ Flow: Admin triggers → fetch news → parse → Gemini extract → geocode →
 All async, single process. No Celery, no Redis, no state machines.
 """
 
-import asyncio
 import json
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List
 from sqlalchemy import select, text
 from geoalchemy2.elements import WKTElement
 
@@ -28,6 +27,7 @@ from app.pipeline.women_safety import (
 from app.services.gemini import gemini_service, GeminiQuotaExceeded
 from app.services.news_scraper import NewsScraper
 from app.services.nominatim import NominatimService
+from app.utils.dedup import is_duplicate_by_title_and_proximity
 
 _MOCK_CACHE = None
 
@@ -234,31 +234,15 @@ async def geocode_incidents(incidents: List[dict]) -> List[dict]:
     return incidents
 
 
-def _title_similarity(t1: str, t2: str) -> float:
-    if not t1 or not t2:
-        return 0.0
-    t1_words = set(t1.lower().split())
-    t2_words = set(t2.lower().split())
-    if not t1_words or not t2_words:
-        return 0.0
-    intersection = t1_words & t2_words
-    union = t1_words | t2_words
-    return len(intersection) / len(union)
-
-
-def _is_duplicate(candidate: dict, existing_title: str, existing_lat: float, existing_lng: float, existing_date) -> bool:
+def _is_duplicate(candidate: dict, existing_title: str, existing_lat: float, existing_lng: float) -> bool:
     title = (candidate.get("article_title") or candidate.get("title") or "").lower()
-    loc = candidate.get("location", "").lower()
     lat = candidate.get("latitude")
     lng = candidate.get("longitude")
-    title_sim = _title_similarity(title, existing_title.lower())
-    if title_sim >= 0.6:
-        return True
-    if title_sim >= 0.3 and lat and existing_lat and lng and existing_lng:
-        loc_dist = ((lat - existing_lat) ** 2 + (lng - existing_lng) ** 2) ** 0.5
-        if loc_dist < 0.1:
-            return True
-    return False
+    return is_duplicate_by_title_and_proximity(
+        title, existing_title.lower(),
+        lat, lng,
+        existing_lat, existing_lng,
+    )
 
 
 async def save_incidents(incidents: List[dict]) -> dict:
@@ -298,7 +282,6 @@ async def save_incidents(incidents: List[dict]) -> dict:
                     existing_inc.title or "",
                     existing_inc.latitude or 0,
                     existing_inc.longitude or 0,
-                    existing_inc.incident_date,
                 ):
                     is_dup = True
                     break

@@ -215,7 +215,10 @@ async def process_pending_reports() -> dict:
                 logger.debug(f"[COMMUNITY_PIPELINE] DB write: safety_reports UPDATE OK for {report['id']}")
             except Exception as e:
                 logger.error(f"[COMMUNITY_PIPELINE] Failed to update safety_report {report['id']}: {e}")
-                await session.rollback()
+                try:
+                    await session.rollback()
+                except Exception as rb_exc:
+                    logger.warning(f"[COMMUNITY_PIPELINE] Rollback also failed: {rb_exc}")
                 continue
 
             # ── Create an Incident record for verified reports ─────────────────

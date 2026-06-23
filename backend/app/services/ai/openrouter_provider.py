@@ -15,6 +15,10 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 class OpenRouterProvider(AIProvider):
     name = "openrouter"
 
+    @property
+    def model_name(self) -> str:
+        return self.model
+
     def __init__(self):
         from app.config import settings
         self.api_key = settings.OPENROUTER_API_KEY

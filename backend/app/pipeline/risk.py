@@ -7,6 +7,7 @@ Recency weighting: recent incidents count more.
 """
 
 import logging
+import math
 from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import text
@@ -14,6 +15,23 @@ from sqlalchemy import text
 from app.database import get_session_factory
 
 logger = logging.getLogger(__name__)
+
+_LAT_MIN, _LAT_MAX = -90.0, 90.0
+_LNG_MIN, _LNG_MAX = -180.0, 180.0
+
+
+def _validate_coords(lat: float, lng: float) -> None:
+    if math.isnan(lat) or math.isinf(lat):
+        raise ValueError(f"Invalid latitude: {lat}")
+    if math.isnan(lng) or math.isinf(lng):
+        raise ValueError(f"Invalid longitude: {lng}")
+    if not (_LAT_MIN <= lat <= _LAT_MAX):
+        raise ValueError(f"Latitude {lat} out of range [{-90}, 90]")
+    if not (_LNG_MIN <= lng <= _LNG_MAX):
+        raise ValueError(f"Longitude {lng} out of range [{-180}, 180]")
+
+
+
 
 HISTORICAL_RADIUS_METERS = 1000
 RECENT_RADIUS_METERS = 1000
@@ -50,6 +68,7 @@ async def ensure_default_location() -> str:
 
 
 async def score_location(lat: float, lng: float, district: Optional[str] = None) -> dict:
+    _validate_coords(lat, lng)
     async with get_session_factory()() as session:
         # Only count incidents with women_safety_category set
         hist = await session.execute(
@@ -243,7 +262,10 @@ async def recalculate_all_risk_scores() -> dict:
                     await session.commit()
                     updated += 1
                 except Exception as e:
-                    await session.rollback()
+                    try:
+                        await session.rollback()
+                    except Exception as rb_exc:
+                        logger.warning(f"Rollback also failed: {rb_exc}")
                     logger.error(f"Risk score failed for ({lat}, {lng}): {e}")
                     errors += 1
         except Exception as e:

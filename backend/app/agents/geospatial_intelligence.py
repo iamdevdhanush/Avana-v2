@@ -26,12 +26,14 @@ from app.pipeline.women_safety import (
     is_women_safety_category,
 )
 from app.services.nominatim import NominatimService
+from app.utils.dedup import (
+    title_similarity,
+    TITLE_DUP_THRESHOLD,
+    TITLE_PROXIMITY_THRESHOLD,
+    PROXIMITY_DEG_THRESHOLD,
+)
 
 logger = logging.getLogger(__name__)
-
-_TITLE_SIMILARITY_DUP_THRESHOLD = 0.6
-_TITLE_PROXIMITY_THRESHOLD = 0.3
-_PROXIMITY_DEG_THRESHOLD = 0.1
 
 
 class GeospatialIntelligenceAgent:
@@ -166,16 +168,6 @@ class GeospatialIntelligenceAgent:
     # Deduplication helpers
     # ──────────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _title_similarity(t1: str, t2: str) -> float:
-        if not t1 or not t2:
-            return 0.0
-        w1 = set(t1.lower().split())
-        w2 = set(t2.lower().split())
-        if not w1 or not w2:
-            return 0.0
-        return len(w1 & w2) / len(w1 | w2)
-
     def _is_duplicate(
         self,
         candidate: dict,
@@ -186,12 +178,12 @@ class GeospatialIntelligenceAgent:
         title = (candidate.get("article_title") or candidate.get("title") or "").lower()
         lat = candidate.get("latitude")
         lng = candidate.get("longitude")
-        sim = self._title_similarity(title, existing_title.lower())
-        if sim >= _TITLE_SIMILARITY_DUP_THRESHOLD:
+        sim = title_similarity(title, existing_title.lower())
+        if sim >= TITLE_DUP_THRESHOLD:
             return True
-        if sim >= _TITLE_PROXIMITY_THRESHOLD and lat and lng:
+        if sim >= TITLE_PROXIMITY_THRESHOLD and lat and lng:
             dist = ((lat - existing_lat) ** 2 + (lng - existing_lng) ** 2) ** 0.5
-            if dist < _PROXIMITY_DEG_THRESHOLD:
+            if dist < PROXIMITY_DEG_THRESHOLD:
                 return True
         return False
 
