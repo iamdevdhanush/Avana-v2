@@ -1,7 +1,7 @@
 """add pipeline_runs table for observability
 
-Revision ID: add_pipeline_runs
-Revises: add_missing_indexes
+Revision ID: 009
+Revises: 008
 Create Date: 2026-06-23
 
 Adds the pipeline_runs table used by PipelineOrchestrator to record
@@ -12,8 +12,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = "add_pipeline_runs"
-down_revision = "add_missing_indexes"
+revision = "009"
+down_revision = "008"
 branch_labels = None
 depends_on = None
 

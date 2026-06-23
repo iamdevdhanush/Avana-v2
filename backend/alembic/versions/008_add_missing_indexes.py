@@ -23,39 +23,57 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _create_index_if_not_exists(index_name: str, table: str, *columns, **kw):
+    """Create index with IF NOT EXISTS guard against ORM-created duplicates."""
+    col_expr = ", ".join(columns)
+    using = kw.pop("using", "btree")
+    extra = ""
+    if "postgresql_ops" in kw:
+        ops = kw["postgresql_ops"]
+        col_expr = ", ".join(f"{c} {ops[c]}" for c in columns)
+    if using == "gist":
+        col_expr = f"({col_expr} {', '.join(f'{k} {v}' for k, v in kw.get('postgresql_ops', {}).items())})" if kw.get("postgresql_ops") else f"({', '.join(columns)})"
+    stmt = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table} USING {using} ({col_expr})"
+    op.execute(stmt)
+
+
 def upgrade() -> None:
-    op.create_index("ix_incidents_women_safety_category", "incidents",
-                    [sa.text("(metadata->>'women_safety_category')")],
-                    postgresql_using="btree",
-                    postgresql_concurrently=True)
-    op.create_index("ix_incidents_created_at", "incidents", ["created_at"],
-                    postgresql_using="btree",
-                    postgresql_concurrently=True)
-    op.create_index("ix_incidents_district", "incidents", ["district"],
-                    postgresql_using="btree",
-                    postgresql_concurrently=True)
-    op.create_index("ix_risk_scores_calculated_at", "risk_scores", ["calculated_at"],
-                    postgresql_using="btree",
-                    postgresql_concurrently=True)
-    op.create_index("ix_risk_scores_lat_lng", "risk_scores",
-                    ["latitude", "longitude"],
-                    postgresql_using="btree",
-                    postgresql_concurrently=True)
-    op.create_index("ix_geocoding_cache_location_text", "geocoding_cache", ["location_text"],
-                    postgresql_using="btree",
-                    postgresql_concurrently=True)
-    op.create_index("ix_incidents_geom_gist", "incidents", ["geom"],
-                    postgresql_using="gist",
-                    postgresql_concurrently=True,
-                    postgresql_ops={"geom": "geography_ops"})
-    op.create_index("ix_police_stations_geom_gist", "police_stations", ["geom"],
-                    postgresql_using="gist",
-                    postgresql_concurrently=True,
-                    postgresql_ops={"geom": "geography_ops"})
-    op.create_index("ix_hospitals_geom_gist", "hospitals", ["geom"],
-                    postgresql_using="gist",
-                    postgresql_concurrently=True,
-                    postgresql_ops={"geom": "geography_ops"})
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_incidents_women_safety_category "
+        "ON incidents USING btree ((metadata->>'women_safety_category'))"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_incidents_created_at "
+        "ON incidents USING btree (created_at)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_incidents_district "
+        "ON incidents USING btree (district)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_risk_scores_calculated_at "
+        "ON risk_scores USING btree (calculated_at)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_risk_scores_lat_lng "
+        "ON risk_scores USING btree (latitude, longitude)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_geocoding_cache_location_text "
+        "ON geocoding_cache USING btree (location_text)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_incidents_geom_gist "
+        "ON incidents USING gist (geom)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_police_stations_geom_gist "
+        "ON police_stations USING gist (geom)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_hospitals_geom_gist "
+        "ON hospitals USING gist (geom)"
+    )
 
 
 def downgrade() -> None:

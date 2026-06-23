@@ -85,9 +85,7 @@ WebSocket support for live incident feeds and map updates (via Supabase Realtime
 
 ### Infrastructure
 - **Docker Compose** — Multi-container orchestration for local dev
-- **GitHub Actions** — CI/CD pipeline with lint, test, build, deploy
 - **Nginx** — Reverse proxy with rate limiting and SSL termination
-- **GHCR** — Container registry for Docker images
 
 ## Architecture
 
@@ -226,8 +224,6 @@ open http://localhost:5173
 
 ```
 avana-v2/
-├── .github/workflows/        # CI/CD pipeline
-│   └── ci.yml
 ├── backend/
 │   ├── alembic/              # Database migrations
 │   │   ├── versions/
@@ -524,7 +520,7 @@ sudo chmod 600 ssl/privkey.pem
 
 - **Railway**: One-click deploy via `railway.json`
 - **Render**: Blueprint deploy via `render.yaml`
-- **AWS ECS**: Deploy using GitHub Actions + ECR
+- **AWS ECS**: Manual deploy via ECR + ECS
 - **DigitalOcean App Platform**: Connect repo, auto-deploy
 - **Google Cloud Run**: Build container, deploy with Cloud Run
 
@@ -586,13 +582,7 @@ npm run lint
 npm run build
 ```
 
-The CI pipeline in `.github/workflows/ci.yml` runs:
-1. **lint-backend**: flake8 + black formatting check
-2. **lint-frontend**: ESLint
-3. **test-backend**: pytest with PostGIS + Redis services
-4. **test-frontend**: TypeScript build + vitest
-5. **build-and-push**: Docker images to GHCR (main only)
-6. **deploy**: SSH deploy to production server (main only)
+Tests are run locally before pushing. No CI/CD pipeline is configured — deployment is handled externally via Render (backend) and Vercel (frontend).
 
 ## Contributing
 

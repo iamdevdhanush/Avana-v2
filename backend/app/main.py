@@ -34,9 +34,6 @@ async def lifespan(app: FastAPI):
     if not db_ok:
         raise RuntimeError("Database is unreachable. Check DATABASE_URL or POSTGRES_* env vars.")
 
-    # Ensure PipelineRun model is registered in ORM metadata before init_db
-    from app.models.pipeline_run import PipelineRun  # noqa: F401
-
     await init_db()
     logger.info("Database initialized")
 
