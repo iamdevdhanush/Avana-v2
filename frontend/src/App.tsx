@@ -21,6 +21,7 @@ const AdminDashboard = lazy(() => import('@/screens/admin/AdminDashboard').then(
 const AdminIncidents = lazy(() => import('@/screens/admin/AdminIncidents').then(m => ({ default: m.AdminIncidents })))
 const AdminUsers = lazy(() => import('@/screens/admin/AdminUsers').then(m => ({ default: m.AdminUsers })))
 const IntelligencePipeline = lazy(() => import('@/screens/admin/IntelligencePipeline').then(m => ({ default: m.IntelligencePipeline })))
+const AdminAIConfig = lazy(() => import('@/screens/admin/AdminAIConfig').then(m => ({ default: m.AdminAIConfig })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -100,6 +101,7 @@ export default function App() {
             <Route path="/admin/incidents" element={<ProtectedRoute adminOnly><Suspense fallback={<div className="flex h-32 items-center justify-center"><span className="text-sm text-muted-foreground">Loading...</span></div>}><AdminIncidents /></Suspense></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute adminOnly><Suspense fallback={<div className="flex h-32 items-center justify-center"><span className="text-sm text-muted-foreground">Loading...</span></div>}><AdminUsers /></Suspense></ProtectedRoute>} />
             <Route path="/admin/pipeline" element={<ProtectedRoute adminOnly><Suspense fallback={<div className="flex h-32 items-center justify-center"><span className="text-sm text-muted-foreground">Loading...</span></div>}><IntelligencePipeline /></Suspense></ProtectedRoute>} />
+            <Route path="/admin/ai-config" element={<ProtectedRoute adminOnly><Suspense fallback={<div className="flex h-32 items-center justify-center"><span className="text-sm text-muted-foreground">Loading...</span></div>}><AdminAIConfig /></Suspense></ProtectedRoute>} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

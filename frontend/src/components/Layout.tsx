@@ -2,7 +2,7 @@ import * as React from 'react'
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Home, Map, Flag, AlertTriangle, User, Shield,
-  Bell, ChevronRight, LogOut, BarChart3, Users,
+  Bell, ChevronRight, LogOut, BarChart3, Users, Brain,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -128,6 +128,13 @@ export function Layout() {
                   >
                     <BarChart3 className="mr-2 h-4 w-4" />
                     Intelligence Pipeline
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => navigate('/admin/ai-config')}
+                    className="text-[#F9FAFB] hover:bg-[#1F2937] focus:bg-[#1F2937]"
+                  >
+                    <Brain className="mr-2 h-4 w-4" />
+                    AI Configuration
                   </DropdownMenuItem>
                 </>
               )}

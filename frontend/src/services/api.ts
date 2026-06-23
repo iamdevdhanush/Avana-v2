@@ -22,6 +22,10 @@ import type {
   PipelineAgent,
   PipelineRunResult,
   ExplainResponse,
+  AIConfigResponse,
+  AIConfigCreate,
+  AIConfigTestResult,
+  AIConfigStatus,
 } from '@/types'
 
 const RAW = import.meta.env.VITE_API_URL || ''
@@ -762,6 +766,43 @@ export const adminApi = {
         localStorage.setItem('avana_last_intel_run', JSON.stringify(runResult))
       }
       return runResult
+    } catch (error) { handleError(error) }
+  },
+
+  // ── AI Provider Config ────────────────────────────────────────────────────────
+
+  listAIConfigs: async (): Promise<AIConfigResponse[]> => {
+    try {
+      const { data: raw } = await api.get('/admin/ai-config')
+      return ((raw.data || raw) as AIConfigResponse[])
+    } catch (error) { handleError(error) }
+  },
+
+  createAIConfig: async (body: AIConfigCreate): Promise<AIConfigResponse> => {
+    try {
+      const { data: raw } = await api.post('/admin/ai-config', body)
+      return (raw.data || raw) as AIConfigResponse
+    } catch (error) { handleError(error) }
+  },
+
+  testAIConfig: async (body: AIConfigCreate): Promise<AIConfigTestResult> => {
+    try {
+      const { data: raw } = await api.post('/admin/ai-config/test', body)
+      return (raw.data || raw) as AIConfigTestResult
+    } catch (error) { handleError(error) }
+  },
+
+  activateAIConfig: async (configId: string): Promise<AIConfigResponse> => {
+    try {
+      const { data: raw } = await api.post(`/admin/ai-config/activate/${configId}`)
+      return (raw.data || raw) as AIConfigResponse
+    } catch (error) { handleError(error) }
+  },
+
+  getAIConfigStatus: async (): Promise<AIConfigStatus> => {
+    try {
+      const { data: raw } = await api.get('/admin/ai-config/status')
+      return (raw.data || raw) as AIConfigStatus
     } catch (error) { handleError(error) }
   },
 }

@@ -395,6 +395,40 @@ export interface LastIntelligenceRun {
   name: string
 }
 
+// ── AI Provider Config ──────────────────────────────────────────────────────
+
+export interface AIConfigResponse {
+  id: string
+  provider: string
+  model: string
+  api_key_masked: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  last_tested_at: string | null
+  last_test_status: string | null
+  last_error: string | null
+}
+
+export interface AIConfigCreate {
+  provider: string
+  model: string
+  api_key: string
+}
+
+export interface AIConfigTestResult {
+  success: boolean
+  latency_ms: number | null
+  error: string | null
+}
+
+export interface AIConfigStatus {
+  active_config: AIConfigResponse | null
+  env_provider: string
+  env_model: string
+  env_has_key: boolean
+}
+
 // ── Risk Explainability ──────────────────────────────────────────────────────
 
 export interface ExplainSourceItem {
