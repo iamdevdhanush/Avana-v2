@@ -19,10 +19,13 @@ from app.schemas.admin import (
 )
 from app.schemas.analytics import DashboardStats, DistrictStats, TypeStats, TrendPoint, AlertItem
 from app.services.gemini import GeminiQuotaExceeded
+# Legacy pipeline functions (still used by orchestrator internally)
 from app.pipeline.intelligence import run_intelligence_pipeline
 from app.pipeline.community import process_pending_reports
 from app.pipeline.risk import recalculate_all_risk_scores
 from app.pipeline.heatmap import generate_heatmap_for_bounds
+# Agent orchestrator — primary execution path
+from app.pipeline.orchestrator import orchestrator as _orchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -421,86 +424,78 @@ async def run_pipeline(
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    pipeline_map = {
-        "intelligence": run_intelligence_pipeline,
-        "community": process_pending_reports,
-        "risk": recalculate_all_risk_scores,
-        "heatmap": lambda: generate_heatmap_for_bounds(11.5, 74.0, 18.0, 78.5, zoom="city"),
-    }
+    """
+    Trigger a named intelligence pipeline via the PipelineOrchestrator.
 
-    runner = pipeline_map.get(pipeline_name)
-    if not runner:
+    Supported names: news | community | risk | heatmap
+    Legacy aliases: intelligence → news
+
+    Execution is recorded in pipeline_runs table for full observability.
+    """
+    # Legacy name alias for backward compatibility
+    _name_map = {"intelligence": "news"}
+    resolved_name = _name_map.get(pipeline_name, pipeline_name)
+
+    _valid = {"news", "community", "risk", "heatmap"}
+    if resolved_name not in _valid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown pipeline: {pipeline_name}. Available: {list(pipeline_map.keys())}",
+            detail=f"Unknown pipeline: '{pipeline_name}'. Available: intelligence, news, community, risk, heatmap",
         )
 
-    acquired = await _acquire_pipeline_lock(pipeline_name)
+    acquired = await _acquire_pipeline_lock(resolved_name)
     if not acquired:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"error": f"Pipeline '{pipeline_name}' is already running"},
+            detail={"error": f"Pipeline '{resolved_name}' is already running"},
         )
 
     try:
-        result = await runner()
+        result = await _orchestrator.run(
+            pipeline_name=resolved_name,
+            triggered_by=f"admin:{admin.email}",
+        )
 
-        if result.get("status") == "skipped":
-            reason = result.get("reason", "gemini_unavailable")
-            log_details = {
-                "pipeline": pipeline_name,
-                "status": "skipped",
-                "reason": reason,
-                "duration_seconds": result.get("duration_seconds", 0),
-            }
-            await _log_admin_action(
-                request, db, admin, "run_pipeline_skipped", "pipeline",
-                pipeline_name, log_details, severity="warning",
-            )
-            return {"pipeline": pipeline_name, "status": "skipped", "result": result}
-
-        # Build structured log details with execution counts for observability
+        # Persist audit log entry (keeps existing audit trail working)
         summary = result.get("summary", {})
         steps = result.get("steps", {})
         log_details = {
-            "pipeline": pipeline_name,
-            "status": "completed",
-            "articles_fetched": summary.get("articles_fetched") or steps.get("fetch", {}).get("count", 0),
-            "incidents_extracted": summary.get("incidents_extracted") or steps.get("extract", {}).get("count", 0),
-            "incidents_created": summary.get("incidents_saved") or steps.get("save", {}).get("saved", 0),
-            "risk_scores_updated": summary.get("risk_scores_updated") or steps.get("risk_recalc", {}).get("updated", 0),
-            "heatmap_cells_updated": summary.get("heatmap_points_generated") or steps.get("heatmap", {}).get("points_generated", 0),
-            "duration_seconds": result.get("duration_seconds") or summary.get("duration_seconds", 0),
-            "completed_at": summary.get("completed_at"),
-            "step_errors": [
-                f"{k}: {v.get('error','')}"
-                for k, v in steps.items()
-                if isinstance(v, dict) and v.get("status") == "failed"
-            ],
+            "pipeline": resolved_name,
+            "status": result.get("status", "completed"),
+            "run_id": result.get("run_id"),
+            "articles_fetched": summary.get("articles_fetched", 0),
+            "incidents_extracted": summary.get("incidents_extracted", 0),
+            "incidents_created": summary.get("incidents_saved", 0),
+            "risk_scores_updated": summary.get("risk_scores_updated", 0),
+            "heatmap_cells_updated": summary.get("heatmap_points", 0),
+            "duration_seconds": result.get("duration_seconds", 0),
+            "failed_steps": summary.get("failed_steps", []),
         }
+        action = "run_pipeline" if result.get("status") != "failed" else "run_pipeline_failed"
+        severity = "info" if result.get("status") != "failed" else "error"
         await _log_admin_action(
-            request, db, admin, "run_pipeline", "pipeline",
-            pipeline_name, log_details, severity="info",
+            request, db, admin, action, "pipeline",
+            resolved_name, log_details, severity=severity,
         )
-        return {"pipeline": pipeline_name, "status": "triggered", "result": result}
-    except GeminiQuotaExceeded as e:
-        err_str = str(e)
-        log_details = {
-            "error": err_str,
-            "pipeline": pipeline_name,
-            "status": "failed",
-            "reason": "GEMINI_QUOTA_EXCEEDED",
+        await db.commit()
+
+        return {
+            "pipeline": resolved_name,
+            "status": result.get("status", "completed"),
+            "run_id": result.get("run_id"),
+            "result": result,
         }
+
+    except GeminiQuotaExceeded as exc:
         await _log_admin_action(
             request, db, admin, "run_pipeline_failed", "pipeline",
-            pipeline_name,
-            log_details,
+            resolved_name,
+            {"pipeline": resolved_name, "status": "failed", "reason": "GEMINI_QUOTA_EXCEEDED", "error": str(exc)},
             "error",
         )
         await db.commit()
         from app.services.gemini import gemini_service
-        gs = gemini_service.get_status()
-        retry_after = gs.get("retry_after_seconds", 900)
+        retry_after = gemini_service.get_status().get("retry_after_seconds", 900)
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
@@ -510,26 +505,20 @@ async def run_pipeline(
                 "retry_after_minutes": round(retry_after / 60, 1),
             },
         )
-    except Exception as e:
-        err_str = str(e)
-        log_details = {
-            "error": err_str,
-            "pipeline": pipeline_name,
-            "status": "failed",
-        }
+    except Exception as exc:
         await _log_admin_action(
             request, db, admin, "run_pipeline_failed", "pipeline",
-            pipeline_name,
-            log_details,
+            resolved_name,
+            {"pipeline": resolved_name, "status": "failed", "error": str(exc)},
             "error",
         )
         await db.commit()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Pipeline run failed: {str(e)}",
+            detail=f"Pipeline run failed: {exc}",
         )
     finally:
-        _release_pipeline_lock(pipeline_name)
+        _release_pipeline_lock(resolved_name)
 
 
 @router.get("/pipeline/last-run")
@@ -774,6 +763,92 @@ async def debug_data_integrity(
     ]
 
     return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pipeline Observability Endpoints (backed by pipeline_runs table)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/pipeline/runs")
+async def list_pipeline_runs(
+    pipeline_type: str = Query(None, description="Filter by pipeline type: news, community, risk, heatmap"),
+    limit: int = Query(20, ge=1, le=100),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns recent pipeline execution records from pipeline_runs table.
+    Each row includes step-level metrics and final status.
+    """
+    filters = "WHERE 1=1"
+    params: dict = {"limit": limit}
+    if pipeline_type:
+        filters += " AND pipeline_type = :pipeline_type"
+        params["pipeline_type"] = pipeline_type
+
+    rows = await db.execute(
+        text(f"""
+            SELECT id, pipeline_type, status, triggered_by,
+                   steps, summary, error, duration_ms,
+                   started_at, completed_at
+            FROM pipeline_runs
+            {filters}
+            ORDER BY started_at DESC
+            LIMIT :limit
+        """),
+        params,
+    )
+    return {
+        "runs": [
+            {
+                "id": str(r[0]),
+                "pipeline_type": r[1],
+                "status": r[2],
+                "triggered_by": r[3],
+                "steps": r[4] or {},
+                "summary": r[5] or {},
+                "error": r[6],
+                "duration_ms": r[7],
+                "started_at": r[8].isoformat() if r[8] else None,
+                "completed_at": r[9].isoformat() if r[9] else None,
+            }
+            for r in rows.fetchall()
+        ]
+    }
+
+
+@router.get("/pipeline/runs/{run_id}")
+async def get_pipeline_run(
+    run_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns full detail for a single pipeline run including all step metrics."""
+    row = await db.execute(
+        text("""
+            SELECT id, pipeline_type, status, triggered_by,
+                   steps, summary, error, duration_ms,
+                   started_at, completed_at
+            FROM pipeline_runs
+            WHERE id = :run_id
+        """),
+        {"run_id": run_id},
+    )
+    r = row.fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail=f"Pipeline run '{run_id}' not found")
+    return {
+        "id": str(r[0]),
+        "pipeline_type": r[1],
+        "status": r[2],
+        "triggered_by": r[3],
+        "steps": r[4] or {},
+        "summary": r[5] or {},
+        "error": r[6],
+        "duration_ms": r[7],
+        "started_at": r[8].isoformat() if r[8] else None,
+        "completed_at": r[9].isoformat() if r[9] else None,
+    }
 
 
 @router.post("/seed")
