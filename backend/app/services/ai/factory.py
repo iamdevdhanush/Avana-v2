@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import List, Optional
 
 from app.services.ai.base import AIProvider
 from app.services.ai.gemini_provider import GeminiProvider, GeminiQuotaExceeded
@@ -7,6 +7,7 @@ from app.services.ai.gemini_provider import GeminiProvider, GeminiQuotaExceeded
 logger = logging.getLogger(__name__)
 
 _provider_instance = None
+_provider_config: Optional[dict] = None
 
 
 class FallbackProvider(AIProvider):
@@ -76,14 +77,68 @@ class FallbackProvider(AIProvider):
         return {}
 
 
+def _build_provider_from_config(config: dict) -> AIProvider:
+    from app.services.ai.openrouter_provider import OpenRouterProvider
+
+    provider_name = config["provider"].strip().lower()
+    model = config["model"]
+    api_key = config["api_key"]
+
+    if provider_name == "gemini":
+        return GeminiProvider(api_key=api_key, model_name=model)
+    elif provider_name == "openrouter":
+        return OpenRouterProvider(api_key=api_key, model=model)
+    elif provider_name == "auto":
+        gemini = GeminiProvider(api_key=api_key, model_name="gemini-2.0-flash")
+        openrouter = OpenRouterProvider(api_key=api_key, model=model)
+        return FallbackProvider([gemini, openrouter])
+    raise ValueError(f"Unknown provider: {provider_name}")
+
+
+async def _load_db_config() -> Optional[dict]:
+    try:
+        from app.database import get_engine
+        from app.utils.encryption import decrypt_api_key
+        from sqlalchemy import text as sa_text
+
+        engine = get_engine()
+        async with engine.connect() as conn:
+            result = await conn.execute(
+                sa_text("""
+                    SELECT provider, model, encrypted_api_key
+                    FROM ai_provider_configs
+                    WHERE is_active = true
+                    LIMIT 1
+                """)
+            )
+            row = result.fetchone()
+            if row:
+                return {
+                    "provider": row[0],
+                    "model": row[1],
+                    "api_key": decrypt_api_key(row[2]),
+                }
+    except Exception as e:
+        logger.warning(f"[AI_FACTORY] Could not load DB config: {e}")
+    return None
+
+
+def set_db_provider_config(config: Optional[dict]):
+    global _provider_config
+    _provider_config = config
+
+
+def get_db_provider_config() -> Optional[dict]:
+    return _provider_config
+
+
 def get_ai_provider() -> AIProvider:
     """Create or return the configured AI provider with fallback chain.
-    
+
     Resolution order:
-    1. If AI_PROVIDER=gemini → GeminiProvider only
-    2. If AI_PROVIDER=openrouter → OpenRouterProvider only
-    3. If AI_PROVIDER=auto (or unset) → Gemini → OpenRouter fallback
-    4. If no key configured → returns a provider that reports unavailable
+    1. Database active config (if set via set_db_provider_config)
+    2. Environment variables (AI_PROVIDER, OPENROUTER_API_KEY, etc.)
+    3. If no key configured → returns a provider that reports unavailable
        (agents fall through to mock mode naturally)
     """
     global _provider_instance
@@ -92,6 +147,12 @@ def get_ai_provider() -> AIProvider:
 
     from app.config import settings
     from app.services.ai.openrouter_provider import OpenRouterProvider
+
+    db_config = _provider_config
+    if db_config:
+        logger.info(f"[AI_FACTORY] Using database config: {db_config['provider']}/{db_config['model']}")
+        _provider_instance = _build_provider_from_config(db_config)
+        return _provider_instance
 
     provider_name = (settings.AI_PROVIDER or "auto").strip().lower()
 
@@ -103,14 +164,13 @@ def get_ai_provider() -> AIProvider:
     elif provider_name == "openrouter":
         _provider_instance = openrouter
     else:
-        # auto: Gemini primary, OpenRouter fallback
         _provider_instance = FallbackProvider([gemini, openrouter])
 
-    logger.info(f"[AI_FACTORY] Provider initialized: {_provider_instance.name}")
+    logger.info(f"[AI_FACTORY] Provider initialized from env: {_provider_instance.name}")
     return _provider_instance
 
 
 def reset_ai_provider():
-    """Reset the cached provider (useful for testing)."""
+    """Reset the cached provider (useful for testing or config change)."""
     global _provider_instance
     _provider_instance = None

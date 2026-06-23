@@ -24,10 +24,11 @@ class GeminiProvider(AIProvider):
 
     @property
     def model_name(self) -> str:
-        return "gemini-2.0-flash"
+        return self._model_name or "gemini-2.0-flash"
 
-    def __init__(self):
-        self.api_key = None
+    def __init__(self, api_key: str | None = None, model_name: str | None = None):
+        self.api_key = api_key
+        self._model_name = model_name
         self.model = None
         self._last_call_time = 0
         self._call_count_this_minute = 0
@@ -39,7 +40,8 @@ class GeminiProvider(AIProvider):
 
     def _init(self):
         from app.config import settings
-        api_key = settings.GEMINI_API_KEY
+        api_key = self.api_key or settings.GEMINI_API_KEY
+        model_name = self._model_name or "gemini-2.0-flash"
         logger.info(f"[GEMINI] Init. Key present: {bool(api_key)}")
         if not api_key:
             self._available = False
@@ -54,10 +56,11 @@ class GeminiProvider(AIProvider):
         try:
             import google.generativeai as genai
             genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel("gemini-2.0-flash")
+            self.model = genai.GenerativeModel(model_name)
             self.api_key = api_key
+            self._model_name = model_name
             self._available = True
-            logger.info("[GEMINI] Gemini service initialized — ONLINE")
+            logger.info(f"[GEMINI] Gemini service initialized — ONLINE (model={model_name})")
         except Exception as e:
             self._available = False
             self._init_error = f"Gemini init failed: {type(e).__name__}: {e}"
@@ -78,7 +81,7 @@ class GeminiProvider(AIProvider):
     def get_status(self) -> dict:
         status = {
             "provider": "gemini",
-            "model": "gemini-2.0-flash" if self._available else None,
+            "model": self.model_name if self._available else None,
             "has_api_key": bool(self.api_key),
             "init_error_detail": self._init_error,
         }
@@ -136,7 +139,7 @@ class GeminiProvider(AIProvider):
                 try:
                     self._check_rate_limit()
                     if system_instruction:
-                        model = genai.GenerativeModel("gemini-2.0-flash", system_instruction=system_instruction)
+                        model = genai.GenerativeModel(self._model_name or "gemini-2.0-flash", system_instruction=system_instruction)
                     else:
                         model = self.model
                     response = model.generate_content(prompt, request_options={"retry": None})

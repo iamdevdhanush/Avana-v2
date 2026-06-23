@@ -19,10 +19,10 @@ class OpenRouterProvider(AIProvider):
     def model_name(self) -> str:
         return self.model
 
-    def __init__(self):
+    def __init__(self, api_key: str | None = None, model: str | None = None):
         from app.config import settings
-        self.api_key = settings.OPENROUTER_API_KEY
-        self.model = settings.OPENROUTER_MODEL or "openai/gpt-4o-mini"
+        self.api_key = api_key or settings.OPENROUTER_API_KEY
+        self.model = model or settings.OPENROUTER_MODEL or "openai/gpt-4o-mini"
         self._available = False
         self._init_error = None
         self._quota_until = None

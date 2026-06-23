@@ -42,6 +42,7 @@ async def lifespan(app: FastAPI):
 
     await _run_alembic_migrations()
     await _ensure_risk_scores_constraint()
+    await _load_ai_db_config()
     asyncio.create_task(_bootstrap_offline_data())
     asyncio.create_task(_ai_diagnostics())
 
@@ -130,6 +131,20 @@ async def _ai_diagnostics():
             logger.warning(f"[AI_DIAG] No AI provider available — agents will use mock mode")
     except Exception as diag_err:
         logger.warning(f"[AI_DIAG] diagnostic failed: {diag_err}")
+
+
+async def _load_ai_db_config():
+    """Load active AI provider config from database into factory."""
+    try:
+        from app.services.ai.factory import _load_db_config, set_db_provider_config
+        config = await _load_db_config()
+        if config:
+            set_db_provider_config(config)
+            logger.info(f"[AI_CONFIG] Loaded active DB config: {config['provider']}/{config['model']}")
+        else:
+            logger.info("[AI_CONFIG] No active DB config found — using env vars")
+    except Exception as e:
+        logger.warning(f"[AI_CONFIG] Failed to load DB config: {e}")
 
 
 async def _bootstrap_offline_data():

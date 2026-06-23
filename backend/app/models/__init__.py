@@ -13,10 +13,11 @@ from app.models.audit_log import AuditLog
 from app.models.geocoding_cache import GeocodingCache
 from app.models.crime_stat import CrimeStat
 from app.models.pipeline_run import PipelineRun
+from app.models.ai_provider_config import AIProviderConfig
 
 __all__ = [
     "User", "Location", "Incident", "RiskScore", "SafetyReport",
     "SOSEvent", "NewsArticle", "PoliceStation", "Hospital",
     "CommunityPost", "Comment", "AuditLog", "GeocodingCache",
-    "CrimeStat", "PipelineRun",
+    "CrimeStat", "PipelineRun", "AIProviderConfig",
 ]

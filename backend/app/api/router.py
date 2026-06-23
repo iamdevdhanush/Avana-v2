@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, incidents, risk, route, sos, community, admin, reports, analytics, location, chat, crime_stats
+from app.api.v1 import auth, incidents, risk, route, sos, community, admin, reports, analytics, location, chat, crime_stats, ai_config
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)
@@ -15,3 +15,4 @@ api_router.include_router(analytics.router)
 api_router.include_router(location.router)
 api_router.include_router(chat.router)
 api_router.include_router(crime_stats.router)
+api_router.include_router(ai_config.router)
