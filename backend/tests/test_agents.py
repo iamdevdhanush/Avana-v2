@@ -37,16 +37,19 @@ async def test_news_intelligence_extract():
 async def test_risk_scoring_calculation():
     with patch("app.pipeline.risk.get_session_factory") as mock_get_factory:
         mock_session = AsyncMock()
-        mock_factory = MagicMock(return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_session), __aexit__=AsyncMock()))
+        mock_factory = MagicMock(return_value=MagicMock(
+            __aenter__=AsyncMock(return_value=mock_session),
+            __aexit__=AsyncMock(return_value=None),
+        ))
         mock_get_factory.return_value = mock_factory
 
-        mock_hist = AsyncMock()
+        mock_hist = MagicMock()
         mock_hist.fetchone.return_value = (5, 20.0)
-        mock_recent = AsyncMock()
-        mock_recent.scalar.return_value = 2
-        mock_police = AsyncMock()
+        mock_recent = MagicMock()
+        mock_recent.fetchone.return_value = (2, 15.0)
+        mock_police = MagicMock()
         mock_police.scalar.return_value = 1
-        mock_hosp = AsyncMock()
+        mock_hosp = MagicMock()
         mock_hosp.scalar.return_value = 2
 
         mock_session.execute.side_effect = [mock_hist, mock_recent, mock_police, mock_hosp]
@@ -58,7 +61,7 @@ async def test_risk_scoring_calculation():
         assert "category" in result
         assert "factors" in result
         assert isinstance(result["score"], float)
-        assert result["category"] in ("Safe", "Moderate", "Elevated", "High Risk")
+        assert result["category"] in ("SAFE", "MODERATE", "HIGH_RISK", "CRITICAL")
 
 
 @pytest.mark.asyncio

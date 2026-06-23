@@ -206,6 +206,7 @@ async def recalculate_all_risk_scores() -> dict:
                 SELECT DISTINCT latitude, longitude
                 FROM incidents
                 WHERE latitude IS NOT NULL
+                  AND longitude IS NOT NULL
                   AND metadata->>'women_safety_category' IS NOT NULL
             """)
         )
