@@ -21,12 +21,13 @@ const SEVERITY_CONFIG = {
   critical: { color: '#7C3AED', bg: 'rgba(124,58,237,0.12)',   dot: '#7C3AED' },
 }
 
-const CATEGORY_CONFIG = {
+const CATEGORY_CONFIG: Record<string, { label: string; color: string; bg: string; ring: string }> = {
   safe:     { label: 'SAFE',      color: '#22C55E', bg: 'rgba(34,197,94,0.12)',    ring: '#22C55E' },
   low:      { label: 'LOW RISK',  color: '#22C55E', bg: 'rgba(34,197,94,0.12)',    ring: '#22C55E' },
   moderate: { label: 'MODERATE',  color: '#F59E0B', bg: 'rgba(245,158,11,0.12)',   ring: '#F59E0B' },
   high:     { label: 'HIGH RISK', color: '#EF4444', bg: 'rgba(239,68,68,0.12)',    ring: '#EF4444' },
   critical: { label: 'CRITICAL',  color: '#7C3AED', bg: 'rgba(124,58,237,0.12)',   ring: '#7C3AED' },
+  unknown:  { label: 'UNKNOWN',   color: '#6B7280', bg: 'rgba(107,114,128,0.12)',  ring: '#6B7280' },
 }
 
 const TYPE_LABELS: Record<string, string> = {

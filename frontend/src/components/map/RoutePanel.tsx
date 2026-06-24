@@ -42,7 +42,8 @@ const ROUTE_TYPES = [
   },
 ]
 
-function getRiskLabel(score: number): { label: string; color: string } {
+function getRiskLabel(score: number, category?: string): { label: string; color: string } {
+  if (category?.toLowerCase() === 'unknown') return { label: 'Unknown Risk', color: '#6B7280' }
   if (score >= 0.8) return { label: 'Low Risk', color: '#22C55E' }
   if (score >= 0.6) return { label: 'Medium-Low Risk', color: '#84CC16' }
   if (score >= 0.4) return { label: 'Medium Risk', color: '#F59E0B' }

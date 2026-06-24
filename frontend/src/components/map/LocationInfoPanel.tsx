@@ -4,7 +4,12 @@ import { useMapStore } from '@/store/mapStore'
 import { useLocationName } from '@/hooks/useLocationName'
 import { riskApi } from '@/services/api'
 
-function getRiskColor(s: number): string {
+function isUnknown(category?: string): boolean {
+  return category?.toLowerCase() === 'unknown'
+}
+
+function getRiskColor(s: number, category?: string): string {
+  if (isUnknown(category)) return '#6B7280'
   if (s >= 0.9) return '#D50000'
   if (s >= 0.75) return '#FF1744'
   if (s >= 0.5) return '#FF8C00'
@@ -12,7 +17,8 @@ function getRiskColor(s: number): string {
   return '#00E676'
 }
 
-function getRiskLabel(s: number): string {
+function getRiskLabel(s: number, category?: string): string {
+  if (isUnknown(category)) return 'Unknown'
   if (s >= 0.9) return 'Critical'
   if (s >= 0.75) return 'High'
   if (s >= 0.5) return 'Elevated'
@@ -20,7 +26,8 @@ function getRiskLabel(s: number): string {
   return 'Low'
 }
 
-function getRiskAdvice(s: number): string {
+function getRiskAdvice(s: number, category?: string): string {
+  if (isUnknown(category)) return 'Insufficient intelligence available'
   if (s >= 0.9) return 'Avoid — active danger zone'
   if (s >= 0.75) return 'Avoid non-essential travel'
   if (s >= 0.5) return 'Exercise heightened caution'
@@ -28,9 +35,9 @@ function getRiskAdvice(s: number): string {
   return 'Area is generally safe'
 }
 
-function RiskScoreBadge({ score }: { score: number }) {
-  const color = getRiskColor(score)
-  const label = getRiskLabel(score)
+function RiskScoreBadge({ score, category }: { score: number; category?: string }) {
+  const color = getRiskColor(score, category)
+  const label = getRiskLabel(score, category)
   const angle = Math.min(360, score * 360)
   return (
     <div className="flex items-center gap-3">
@@ -67,9 +74,16 @@ interface LocationInfoPanelProps {
   onClose?: () => void
 }
 
+interface RiskScoreState {
+  score: number
+  category: string
+  factors: Record<string, number>
+  recommendations: string[]
+}
+
 export function LocationInfoPanel({ onReportArea, onGetSafeRoute, onClose }: LocationInfoPanelProps) {
   const { selectedLocation, setSelectedLocation } = useMapStore()
-  const [riskScore, setRiskScore] = React.useState<{ score: number; factors: Record<string, number>; recommendations: string[] } | null>(null)
+  const [riskScore, setRiskScore] = React.useState<RiskScoreState | null>(null)
   const [isLoading, setIsLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -79,12 +93,11 @@ export function LocationInfoPanel({ onReportArea, onGetSafeRoute, onClose }: Loc
     if (!selectedLocation) return
     setIsLoading(true)
     setError(null)
-    const body = { latitude: selectedLocation.lat, longitude: selectedLocation.lng }
     riskApi.getRiskScore(selectedLocation.lat, selectedLocation.lng)
       .then((r) => {
         const fMap: Record<string, number> = {}
         for (const f of r.factors) fMap[f.name] = f.value
-        setRiskScore({ score: r.score, factors: fMap, recommendations: r.recommendations })
+        setRiskScore({ score: r.score, category: r.category, factors: fMap, recommendations: r.recommendations })
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setIsLoading(false))
@@ -93,7 +106,8 @@ export function LocationInfoPanel({ onReportArea, onGetSafeRoute, onClose }: Loc
   if (!selectedLocation) return null
 
   const score = riskScore?.score ?? 0
-  const riskColor = getRiskColor(score)
+  const rawCategory = riskScore?.category ?? ''
+  const riskColor = getRiskColor(score, rawCategory)
 
   const handleClose = () => {
     setSelectedLocation(null)
@@ -140,7 +154,7 @@ export function LocationInfoPanel({ onReportArea, onGetSafeRoute, onClose }: Loc
               {error}
             </div>
           ) : riskScore ? (
-            <RiskScoreBadge score={riskScore.score} />
+            <RiskScoreBadge score={riskScore.score} category={riskScore.category} />
           ) : null}
 
           {riskScore?.factors && (

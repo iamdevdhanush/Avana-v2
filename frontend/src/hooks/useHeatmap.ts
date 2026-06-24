@@ -33,6 +33,8 @@ const FALLBACK_POINTS: HeatmapPoint[] = [
   { lat: 12.9600, lng: 77.6400, weight: 0.60, riskCategory: 'HIGH_RISK' },
   { lat: 12.9100, lng: 77.5900, weight: 0.40, riskCategory: 'MODERATE' },
   { lat: 13.0000, lng: 77.6300, weight: 0.35, riskCategory: 'MODERATE' },
+  { lat: 12.9400, lng: 77.5800, weight: 0.00, riskCategory: 'UNKNOWN' },
+  { lat: 12.9650, lng: 77.6050, weight: 0.00, riskCategory: 'UNKNOWN' },
 ]
 
 export function useHeatmap(

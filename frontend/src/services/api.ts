@@ -189,25 +189,32 @@ function mapCategory(cat: string): RiskScore['category'] {
   const m: Record<string, RiskScore['category']> = {
     'Safe': 'safe', 'Low': 'low', 'Moderate': 'moderate',
     'High': 'high', 'Critical': 'critical', 'High Risk': 'high',
+    'Unknown': 'unknown', 'UNKNOWN': 'unknown', 'unknown': 'unknown',
     'safe': 'safe', 'low': 'low', 'moderate': 'moderate',
     'high': 'high', 'critical': 'critical',
   }
-  return m[cat] || 'moderate'
+  return m[cat] || 'unknown'
 }
 
 function mapBackendRouteOption(opt: Record<string, unknown>): RouteOption {
   return {
     type: String(opt.type || ''),
     geometry: (opt.geometry || []) as [number, number][],
-    segments: ((opt.segments || []) as Record<string, unknown>[]).map((s) => ({
-      startIndex: 0,
-      endIndex: 0,
-      safetyScore: Number(s.safety_score || 0),
-      riskCategory: String(s.risk_category || ''),
-      riskLevel: (s.risk_category === 'High Risk' || s.risk_category === 'Critical' ? 'high' :
-                  s.risk_category === 'Moderate' ? 'medium' : 'low') as 'low' | 'medium' | 'high',
-      incidents: [],
-    })),
+    segments: ((opt.segments || []) as Record<string, unknown>[]).map((s) => {
+      const rc = String(s.risk_category || '')
+      const riskLevel: 'low' | 'medium' | 'high' =
+        rc === 'High Risk' || rc === 'Critical' ? 'high' :
+        rc === 'UNKNOWN' ? 'low' :
+        rc === 'Moderate' ? 'medium' : 'low'
+      return {
+        startIndex: 0,
+        endIndex: 0,
+        safetyScore: Number(s.safety_score || 0),
+        riskCategory: rc,
+        riskLevel,
+        incidents: [],
+      }
+    }),
     duration: Number(opt.duration_minutes || 0),
     distance: Number(opt.distance_km || 0),
     safetyScore: Number(opt.safety_score || 0),

@@ -6,6 +6,7 @@ const LEVELS = [
   { range: '50–74', label: 'Elevated', color: '#FF8C00', level: 3 },
   { range: '25–49', label: 'Moderate', color: '#FFD600', level: 2 },
   { range: '0–24', label: 'Low', color: '#00E676', level: 1 },
+  { range: 'N/A', label: 'Unknown', color: '#6B7280', level: 0 },
 ]
 
 interface HeatmapLegendProps {

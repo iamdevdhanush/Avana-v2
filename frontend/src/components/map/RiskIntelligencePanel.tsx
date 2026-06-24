@@ -5,14 +5,20 @@ import { useLocationName } from '@/hooks/useLocationName'
 import { riskApi } from '@/services/api'
 import type { ExplainResponse, ExplainSourceItem } from '@/types'
 
-function getRiskColor(s: number): string {
+function isUnknown(category?: string): boolean {
+  return category?.toLowerCase() === 'unknown'
+}
+
+function getRiskColor(s: number, category?: string): string {
+  if (isUnknown(category)) return '#6B7280'
   if (s >= 75) return '#D50000'
   if (s >= 50) return '#FF8C00'
   if (s >= 25) return '#FFD600'
   return '#00E676'
 }
 
-function getRiskLabel(s: number): string {
+function getRiskLabel(s: number, category?: string): string {
+  if (isUnknown(category)) return 'Unknown'
   if (s >= 75) return 'High'
   if (s >= 50) return 'Elevated'
   if (s >= 25) return 'Moderate'
@@ -156,8 +162,9 @@ export function RiskIntelligencePanel({ onGetSafeRoute, onClose }: RiskIntellige
   if (!selectedLocation) return null
 
   const score = explain?.risk_score ?? 0
-  const category = explain?.risk_category ?? getRiskLabel(score)
-  const riskColor = getRiskColor(score)
+  const rawCategory = explain?.risk_category ?? ''
+  const category = getRiskLabel(score, rawCategory)
+  const riskColor = getRiskColor(score, rawCategory)
   const incidentCount = explain?.incident_count ?? 0
   const sources = explain?.sources ?? []
 

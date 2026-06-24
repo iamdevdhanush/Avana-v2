@@ -33,6 +33,7 @@
   --color-risk-moderate: #EAB308;
   --color-risk-elevated: #F97316;
   --color-risk-high: #EF4444;
+  --color-risk-unknown: #6B7280;
 
   /* Safety colors (legacy compat) */
   --color-safety-500: #22C55E;
@@ -248,6 +249,7 @@
 .status-moderate { color: #F59E0B; }
 .status-danger { color: #EF4444; }
 .status-critical { color: #7C3AED; }
+.status-unknown { color: #6B7280; }
 
 /* =============================================
    LEAFLET DARK MAP OVERRIDES

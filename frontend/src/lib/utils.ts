@@ -33,7 +33,12 @@ export function formatDuration(seconds: number): string {
   return `${minutes}min`
 }
 
-export function getRiskColor(score: number): string {
+function isUnknown(category?: string): boolean {
+  return category?.toLowerCase() === 'unknown'
+}
+
+export function getRiskColor(score: number, category?: string): string {
+  if (isUnknown(category)) return 'var(--color-risk-unknown)'
   if (score >= 0.8) return 'var(--color-critical)'
   if (score >= 0.6) return 'var(--color-danger-500)'
   if (score >= 0.4) return 'var(--color-warning-500)'
@@ -41,7 +46,8 @@ export function getRiskColor(score: number): string {
   return 'var(--color-safety-600)'
 }
 
-export function getRiskLabel(score: number): string {
+export function getRiskLabel(score: number, category?: string): string {
+  if (isUnknown(category)) return 'Unknown'
   if (score >= 0.8) return 'Critical'
   if (score >= 0.6) return 'High'
   if (score >= 0.4) return 'Moderate'

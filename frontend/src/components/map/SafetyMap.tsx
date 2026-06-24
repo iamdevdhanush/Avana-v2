@@ -74,7 +74,8 @@ const StaticMarker = memo(function StaticMarker({ position, icon }: { position: 
   return null
 })
 
-function getRouteColor(score: number): string {
+function getRouteColor(score: number, category?: string): string {
+  if (category?.toLowerCase() === 'unknown') return '#6B7280'
   if (score >= 0.8) return '#00E676'
   if (score >= 0.6) return '#FFD600'
   if (score >= 0.4) return '#FF8C00'
