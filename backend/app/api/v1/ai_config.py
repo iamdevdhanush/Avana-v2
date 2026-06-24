@@ -193,13 +193,13 @@ async def activate_config(
     config.updated_at = datetime.now(timezone.utc)
     await db.flush()
 
-    from app.services.ai.factory import reset_ai_provider
-    reset_ai_provider()
-
     await _log_action(request, db, admin, "ai_config_activated", config_id, {
         "provider": config.provider, "model": config.model,
     })
     await db.commit()
+
+    from app.services.ai.factory import reload_db_config
+    await reload_db_config()
     return _to_response(config)
 
 

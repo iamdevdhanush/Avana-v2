@@ -215,6 +215,19 @@ def reset_ai_provider():
     _fallback_events.clear()
 
 
+async def reload_db_config():
+    """Reset and reload the provider config from the database."""
+    global _provider_instance, _provider_config
+    _provider_instance = None
+    _provider_config = None
+    config = await _load_db_config()
+    if config:
+        _provider_config = config
+        logger.info(f"[AI_FACTORY] Reloaded DB config: provider={config['provider']} model={config['model']}")
+    else:
+        logger.info("[AI_FACTORY] No active DB config after reload")
+
+
 def get_ai_fallback_events() -> List[dict]:
     """Return recorded fallback events for observability."""
     return list(_fallback_events)
