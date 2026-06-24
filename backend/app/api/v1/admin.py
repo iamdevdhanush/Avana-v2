@@ -260,11 +260,18 @@ async def moderate_incident(
     result = await db.execute(select(Incident).where(Incident.id == id))
     incident = result.scalar_one_or_none()
     if not incident:
+        logger.warning(f"[MODERATE] Incident {id} not found — admin={admin.email}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found")
+
+    logger.info(
+        f"[MODERATE] admin={admin.email} incident={id} "
+        f"requested_status={body.status} current_status={incident.status.value}"
+    )
 
     try:
         incident.status = IncidentStatus(body.status)
     except ValueError:
+        logger.error(f"[MODERATE] Invalid status '{body.status}' for incident {id}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid status: {body.status}")
 
     incident.moderated_by = admin.id
@@ -280,12 +287,18 @@ async def moderate_incident(
     })
     await db.flush()
 
+    logger.info(
+        f"[MODERATE] SUCCESS: incident={id} "
+        f"from={incident.status.value} to={body.status} "
+        f"by={admin.email}"
+    )
+
     return {
         "id": str(incident.id),
         "status": incident.status.value if hasattr(incident.status, "value") else incident.status,
         "moderated_by": str(admin.id),
         "moderation_notes": body.moderation_notes,
-        "review_complete": body.status in ("VERIFIED", "DISMISSED", "DUPLICATE", "SPAM"),
+        "review_complete": body.status in ("VERIFIED", "DISMISSED", "DUPLICATE", "SPAM", "RESOLVED"),
     }
 
 

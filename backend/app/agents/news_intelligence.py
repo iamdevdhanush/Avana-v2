@@ -135,32 +135,67 @@ class NewsIntelligenceAgent:
                 "metrics": {"fetch": {"status": "failed", "error": str(exc)}, "duration_seconds": round(time.time() - start, 2)},
             }
 
-        await self._persist_articles(articles)
+        persist_count = await self._persist_articles(articles)
+        logger.info(f"[NEWS_AGENT] Articles persisted: {persist_count}/{len(articles)}")
 
         incidents: List[dict] = []
+        ai_success = 0
+        ai_failure = 0
         try:
             sem = asyncio.Semaphore(5)
             async def _extract_one(a: dict) -> List[dict]:
                 async with sem:
                     try:
-                        return await self._extract_incidents(a)
+                        result = await self._extract_incidents(a)
+                        if result:
+                            nonlocal ai_success
+                            ai_success += 1
+                        else:
+                            nonlocal ai_failure
+                            ai_failure += 1
+                        return result
                     except GeminiQuotaExceeded:
                         raise
                     except Exception as exc:
                         logger.warning(f"[NEWS_AGENT] Extraction failed for '{a.get('title', '')}': {exc}")
+                        nonlocal ai_failure
+                        ai_failure += 1
                         return []
             results = await asyncio.gather(*[_extract_one(a) for a in articles], return_exceptions=True)
             for r in results:
                 if isinstance(r, GeminiQuotaExceeded):
+                    logger.error("[NEWS_AGENT] Gemini quota exhausted mid-extraction -- stopping early")
                     break
                 if isinstance(r, list):
                     incidents.extend(r)
         except GeminiQuotaExceeded:
             logger.error("[NEWS_AGENT] Gemini quota exhausted mid-extraction -- stopping early")
 
-        extract_metric = {"status": "ok", "count": len(incidents)}
+        logger.info(
+            f"[NEWS_AGENT] Extraction: {ai_success} AI calls succeeded, "
+            f"{ai_failure} failed, {len(incidents)} incidents extracted"
+        )
+
+        if not incidents and not self._ai.is_available():
+            logger.warning("[NEWS_AGENT] All AI providers failed — falling back to mock")
+            mock_result = await self._run_mock(start)
+            mock_result["metrics"]["fetch"] = fetch_metric
+            mock_result["metrics"]["extract"] = {
+                "status": "ok", "count": len(mock_result.get("incidents", [])),
+                "source": "mock_fallback", "ai_success": ai_success, "ai_failure": ai_failure,
+            }
+            return mock_result
+
+        extract_metric = {
+            "status": "ok", "count": len(incidents),
+            "ai_success": ai_success, "ai_failure": ai_failure,
+        }
         duration = round(time.time() - start, 2)
-        logger.info(f"[NEWS_AGENT] Complete: {len(articles)} articles -> {len(incidents)} incidents ({duration}s)")
+        logger.info(
+            f"[NEWS_AGENT] Complete: {len(articles)} articles -> "
+            f"{len(incidents)} incidents ({duration}s). "
+            f"AI calls: {ai_success} success, {ai_failure} failed"
+        )
 
         return {
             "status": "ok",
@@ -170,6 +205,7 @@ class NewsIntelligenceAgent:
                 "fetch": fetch_metric,
                 "extract": extract_metric,
                 "duration_seconds": duration,
+                "persist_count": persist_count,
             },
         }
 
@@ -252,10 +288,10 @@ class NewsIntelligenceAgent:
                     logger.warning(f"[NEWS_AGENT] Content fetch failed: {exc}")
         return results
 
-    async def _persist_articles(self, articles: List[dict]) -> None:
+    async def _persist_articles(self, articles: List[dict]) -> int:
         with Timer("11a. DB insert - news_articles"):
             if not articles:
-                return
+                return 0
             from sqlalchemy import text
             from app.database import get_session_factory
 
@@ -267,16 +303,16 @@ class NewsIntelligenceAgent:
                     if not url:
                         continue
                     try:
-                        await session.execute(
+                        result = await session.execute(
                             text("""
                                 INSERT INTO news_articles
                                     (id, title, url, source, source_type,
-                                     published_at, content, summary,
+                                     published_at, fetched_at, content, summary,
                                      is_processed, created_at)
                                 VALUES (
                                     gen_random_uuid(),
                                     :title, :url, :source, 'rss',
-                                    NOW(), :content, :summary,
+                                    NOW(), NOW(), :content, :summary,
                                     false, NOW()
                                 )
                                 ON CONFLICT (url) DO NOTHING
@@ -289,11 +325,12 @@ class NewsIntelligenceAgent:
                                 "summary": (a.get("summary") or "")[:2000],
                             },
                         )
-                        written += 1
+                        written += result.rowcount if hasattr(result, "rowcount") else 1
                     except Exception as exc:
                         logger.warning(f"[NEWS_AGENT] Failed to persist article '{url[:60]}': {exc}")
                 await session.commit()
             logger.info(f"[NEWS_AGENT] Persisted {written} articles to news_articles")
+            return written
 
     async def _extract_incidents(self, article: dict) -> List[dict]:
         with Timer("7+8+9. AI request (OpenRouter/Gemini) + JSON parsing"):

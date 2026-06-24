@@ -191,8 +191,9 @@ def get_ai_provider() -> AIProvider:
 
         db_config = _provider_config
         if db_config:
-            logger.info(f"[AI_FACTORY] Using database config: {db_config['provider']}/{db_config['model']}")
+            logger.info(f"[AI_FACTORY] Using database config: provider={db_config['provider']} model={db_config['model']}")
             _provider_instance = _build_provider_from_config(db_config)
+            logger.info(f"[AI_FACTORY] DB provider online: {_provider_instance.name} model={_provider_instance.model_name}")
             return _provider_instance
 
         provider_name = (settings.AI_PROVIDER or "auto").strip().lower()
@@ -200,15 +201,26 @@ def get_ai_provider() -> AIProvider:
         gemini = GeminiProvider()
         openrouter = OpenRouterProvider()
 
+        logger.info(
+            f"[AI_FACTORY] Env config: AI_PROVIDER={provider_name} "
+            f"OPENROUTER_API_KEY={'set' if settings.OPENROUTER_API_KEY else 'unset'} "
+            f"GEMINI_API_KEY={'set' if settings.GEMINI_API_KEY else 'unset'} "
+            f"openrouter_available={openrouter.is_available()} "
+            f"gemini_available={gemini.is_available()}"
+        )
+
         if provider_name == "gemini":
             _provider_instance = gemini
         elif provider_name == "openrouter":
             _provider_instance = openrouter
         else:
-            # Fallback chain: OpenRouter first, then Gemini
             _provider_instance = FallbackProvider([openrouter, gemini])
 
-        logger.info(f"[AI_FACTORY] Provider initialized from env: {_provider_instance.name}")
+        logger.info(
+            f"[AI_FACTORY] Provider initialized: {_provider_instance.name} "
+            f"model={_provider_instance.model_name} "
+            f"available={_provider_instance.is_available()}"
+        )
         return _provider_instance
 
 

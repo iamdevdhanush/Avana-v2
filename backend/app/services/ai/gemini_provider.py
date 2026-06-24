@@ -160,12 +160,12 @@ class GeminiProvider(AIProvider):
                             self._available = False
                             self._init_error = "Gemini API key invalid or rejected"
                             logger.error(f"[GEMINI] {self._init_error}")
-                            raise GeminiAuthError(self._init_error) from e
+                            return ""
                         if "ACCESS_TOKEN_TYPE_UNSUPPORTED" in err_str:
                             self._available = False
                             self._init_error = "Gemini received OAuth token instead of API key"
                             logger.error(f"[GEMINI] {self._init_error}")
-                            raise GeminiAuthError(self._init_error) from e
+                            return ""
                         if "quota" in err_str.lower() or "resource_exhausted" in err_str.lower():
                             logger.error(f"[GEMINI] Quota exhausted: {e}")
                             self._quota_until = time.time() + QUOTA_COOLDOWN_MINUTES * 60
