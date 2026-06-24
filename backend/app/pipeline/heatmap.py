@@ -5,7 +5,7 @@ from typing import List, Tuple
 from sqlalchemy import text
 
 from app.database import get_session_factory
-from app.pipeline.risk import score_location
+from app.pipeline.risk import score_location, _check_data_sufficiency, _count_crime_stats_nearby
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,7 @@ async def compute_localized_bounds(buffer_degrees: float = 0.05, max_cells_per: 
                 FROM incidents
                 WHERE latitude IS NOT NULL
                   AND metadata->>'women_safety_category' IS NOT NULL
+                  AND status::text IN ('verified', 'VERIFIED')
                   AND created_at >= NOW() - INTERVAL '1 hour'
                 GROUP BY district
             """)
@@ -118,7 +119,7 @@ async def _score_points_batch(points: List[Tuple[float, float]]) -> List[dict]:
                         {radius_m}
                     )
                     AND inc.metadata->>'women_safety_category' IS NOT NULL
-                    AND inc.status::text != 'dismissed'
+                    AND inc.status::text IN ('verified', 'VERIFIED')
                 GROUP BY pt.lat, pt.lng
             """)
         )
@@ -144,9 +145,9 @@ async def _score_points_batch(points: List[Tuple[float, float]]) -> List[dict]:
                         ST_SetSRID(ST_MakePoint(pt.lng, pt.lat), 4326)::geography,
                         {radius_m}
                     )
-                    AND inc.created_at >= NOW() - INTERVAL '7 days'
+                    AND inc.created_at >= NOW() - INTERVAL '30 days'
                     AND inc.metadata->>'women_safety_category' IS NOT NULL
-                    AND inc.status::text != 'dismissed'
+                    AND inc.status::text IN ('verified', 'VERIFIED')
                 GROUP BY pt.lat, pt.lng
             """)
         )
@@ -184,10 +185,48 @@ async def _score_points_batch(points: List[Tuple[float, float]]) -> List[dict]:
         )
         hospital_rows = {(float(r[0]), float(r[1])): int(r[2]) for r in hospitals.fetchall()}
 
+        all_counts = await session.execute(
+            text(f"""
+                SELECT pt.lat, pt.lng, COUNT(inc.id) as cnt
+                FROM (VALUES {values_clause}) AS pt(lat, lng)
+                LEFT JOIN incidents inc
+                    ON ST_DWithin(
+                        inc.geom::geography,
+                        ST_SetSRID(ST_MakePoint(pt.lng, pt.lat), 4326)::geography,
+                        {radius_m}
+                    )
+                    AND inc.status::text IN ('verified', 'VERIFIED')
+                GROUP BY pt.lat, pt.lng
+            """)
+        )
+        all_inc_rows = {(float(r[0]), float(r[1])): int(r[2]) for r in all_counts.fetchall()}
+
+        crime_rows = {}
+        try:
+            cr = await session.execute(
+                text(f"""
+                    SELECT pt.lat, pt.lng, COUNT(*) as cnt
+                    FROM (VALUES {values_clause}) AS pt(lat, lng)
+                    LEFT JOIN crime_stats cs
+                        ON cs.latitude IS NOT NULL
+                        AND cs.longitude IS NOT NULL
+                        AND ST_DWithin(
+                            ST_SetSRID(ST_MakePoint(cs.longitude, cs.latitude), 4326)::geography,
+                            ST_SetSRID(ST_MakePoint(pt.lng, pt.lat), 4326)::geography,
+                            {radius_m * 2}
+                        )
+                    GROUP BY pt.lat, pt.lng
+                """)
+            )
+            for r in cr.fetchall():
+                crime_rows[(float(r[0]), float(r[1]))] = int(r[2])
+        except Exception:
+            pass
+
     results = []
     current_hour = datetime.now(timezone.utc).hour
     is_night = current_hour >= 21 or current_hour < 6
-    night_penalty = 15.0 if is_night else 0.0
+    night_score = 10.0 if is_night else 0.0
 
     for lat, lng in points:
         h = hist_rows.get((lat, lng), {"cnt": 0, "wt": 0})
@@ -196,32 +235,55 @@ async def _score_points_batch(points: List[Tuple[float, float]]) -> List[dict]:
         r_weighted = r["weighted_impact"]
         p_cnt = police_rows.get((lat, lng), 0)
         h_cnt = hospital_rows.get((lat, lng), 0)
+        all_cnt = all_inc_rows.get((lat, lng), 0)
+        crime_cnt = crime_rows.get((lat, lng), 0)
 
-        density_factor = min(1.0, h["cnt"] / 50.0)
-        severity_factor = h["wt"] / 100.0 if h["wt"] > 0 else 0
-        historical_risk = (density_factor * 0.6 + severity_factor * 0.4) * 100.0
-        recent_impact = min(30.0, r_cnt * 6.0)
-        recency_bonus = min(20.0, r_weighted * 2.0)
-        sev_penalty = min(25.0, r_weighted * 0.3)
-        police_bonus = min(10.0, p_cnt * 3.33)
-        hospital_bonus = min(5.0, h_cnt * 1.67)
-        safety_bonus = police_bonus + hospital_bonus
+        # Data sufficiency check
+        sufficient, _ = _check_data_sufficiency(h["cnt"], r_cnt, crime_cnt)
 
-        raw_score = (
-            historical_risk * 0.4
-            + recent_impact * 0.2
-            + recency_bonus * 0.1
-            + night_penalty * 0.15
-            + sev_penalty * 0.15
-            - safety_bonus * 0.1
-        )
-        score = max(0.0, min(100.0, raw_score))
+        if not sufficient:
+            results.append({
+                "latitude": lat,
+                "longitude": lng,
+                "score": 0.0,
+                "category": "UNKNOWN",
+            })
+            continue
 
-        if score <= 25:
+        # v2 Risk Formula
+        density_log = math.log10(h["cnt"] + 1) / math.log10(51) if h["cnt"] > 0 else 0.0
+        density_score = min(50.0, density_log * 50.0)
+
+        if h["wt"] > 0:
+            severity_score = (h["wt"] / 100.0) * 25.0
+        else:
+            severity_score = 0.0
+
+        if r_cnt > 0:
+            recency_raw = min(15.0, (r_weighted / 100.0) * 15.0)
+            recency_count_bonus = min(5.0, r_cnt * 1.5)
+            recency_score = min(15.0, recency_raw + recency_count_bonus * 0.3)
+        else:
+            recency_score = 0.0
+
+        police_bonus = min(15.0, p_cnt * 5.0)
+        hospital_bonus = min(5.0, h_cnt * 2.5)
+        safety_reduction = min(20.0, police_bonus + hospital_bonus)
+
+        raw_before_buffer = density_score + severity_score + recency_score + night_score
+        if raw_before_buffer > 0:
+            reduction_ratio = min(1.0, safety_reduction / max(1.0, raw_before_buffer))
+            final_score = raw_before_buffer * (1.0 - reduction_ratio * 0.3)
+        else:
+            final_score = 0.0
+
+        score = max(0.0, min(100.0, final_score))
+
+        if score <= 20:
             category = "SAFE"
-        elif score <= 50:
+        elif score <= 40:
             category = "MODERATE"
-        elif score <= 75:
+        elif score <= 65:
             category = "HIGH_RISK"
         else:
             category = "CRITICAL"
@@ -276,7 +338,7 @@ async def generate_heatmap_for_bounds(
             for lat, lng in batch:
                 all_results.append({
                     "latitude": lat, "longitude": lng,
-                    "score": 50.0, "category": "MODERATE",
+                    "score": 0.0, "category": "UNKNOWN",
                 })
 
     logger.info(f"[HEATMAP_START] Inserting {len(all_results)} heatmap points into risk_scores")
@@ -349,12 +411,10 @@ async def get_heatmap_data(
                 FROM risk_scores
                 WHERE latitude BETWEEN :sw_lat AND :ne_lat
                   AND longitude BETWEEN :sw_lng AND :ne_lng
-                  AND score >= :min_score
                 ORDER BY latitude, longitude, calculated_at DESC
             """),
             {"sw_lat": sw_lat, "ne_lat": ne_lat,
-             "sw_lng": sw_lng, "ne_lng": ne_lng,
-             "min_score": min_score},
+             "sw_lng": sw_lng, "ne_lng": ne_lng},
         )
         rows = result.fetchall()
         logger.info(f"[HEATMAP] points returned: {len(rows)} (bounds: {sw_lat:.4f}-{ne_lat:.4f}, {sw_lng:.4f}-{ne_lng:.4f})")

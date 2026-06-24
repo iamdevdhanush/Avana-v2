@@ -266,18 +266,19 @@ async def process_pending_reports() -> dict:
                         meta["women_safety_weight"] = None
                         logger.warning(f"[COMMUNITY_PIPELINE] Report {report['id']} has no women_safety_category — excluded from risk/heatmap")
 
-                    incident = Incident(
+                    is_ai_classified = gemini_available
+                incident = Incident(
                         incident_type=itype,
                         severity=severity,
                         source=IncidentSource.COMMUNITY_REPORT,
-                        status=IncidentStatus.VERIFIED,
+                        status=IncidentStatus.PENDING if is_ai_classified else IncidentStatus.VERIFIED,
                         confidence_score=final_conf,
                         latitude=lat,
                         longitude=lng,
                         geom=WKTElement(f"POINT({lng} {lat})", srid=4326),
                         description=(report.get("description") or "")[:500],
                         incident_date=datetime.now(timezone.utc),
-                        ai_classified=True,
+                        ai_classified=is_ai_classified,
                         meta_data=meta,
                     )
                     session.add(incident)

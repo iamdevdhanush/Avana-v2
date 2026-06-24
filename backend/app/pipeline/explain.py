@@ -194,8 +194,10 @@ async def explain_risk(
     cat_map = {
         "SAFE": "Low", "MODERATE": "Moderate",
         "HIGH_RISK": "Elevated", "CRITICAL": "High",
+        "UNKNOWN": "Unknown",
         "Low": "Low", "Moderate": "Moderate",
         "High Risk": "Elevated", "High": "High", "Critical": "High",
+        "Unknown": "Unknown",
     }
     level = cat_map.get(risk_category, "Moderate")
 

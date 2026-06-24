@@ -55,6 +55,33 @@ _CITY_SOURCES = [
     },
 ]
 
+# Kannada-language news sources
+_KANNADA_SOURCES = [
+    {
+        "city": "Karnataka",
+        "feeds": [
+            "https://kannada.oneindia.com/rss/news-karnataka-fb.xml",
+            "https://kannada.oneindia.com/rss/news-karnataka.xml",
+            "https://vijaykarnataka.com/rssfeeds/29716808.cms",
+            "https://kannada.news18.com/rss/uttara-karnataka.xml",
+        ],
+        "language": "kn",
+    },
+]
+
+# Source credibility weights (higher = more trusted)
+SOURCE_CREDIBILITY_WEIGHTS = {
+    "police": 1.0,
+    "government": 0.95,
+    "verified_community": 0.9,
+    "community_report": 0.7,
+    "news_english": 0.6,
+    "news_kannada": 0.5,
+    "user_report": 0.5,
+    "sos": 0.4,
+    "system": 0.3,
+}
+
 
 class NewsIntelligenceAgent:
     name = "news_intelligence"
@@ -62,6 +89,18 @@ class NewsIntelligenceAgent:
     def __init__(self):
         self._categories_list = sorted(WOMEN_SAFETY_CATEGORIES.keys())
         self._ai = get_ai_provider()
+
+    @staticmethod
+    def _get_source_credibility(source_url: str, source_city: str) -> float:
+        base_weight = SOURCE_CREDIBILITY_WEIGHTS.get("news_english", 0.6)
+        if not source_url:
+            return base_weight
+        url_lower = source_url.lower()
+        if any(kw in url_lower for kw in [".gov.in", ".police.", "data.gov"]):
+            return SOURCE_CREDIBILITY_WEIGHTS["government"]
+        if any(kw in url_lower for kw in ["kannada", "vijaykarnataka", "oneindia", "news18"]):
+            return SOURCE_CREDIBILITY_WEIGHTS["news_kannada"]
+        return base_weight
 
     async def run(self, mock_mode: bool = False) -> dict:
         with Timer("3. NewsIntelligenceAgent.run()"):
@@ -156,6 +195,18 @@ class NewsIntelligenceAgent:
             articles = []
             try:
                 all_raw = scraper.fetch_all()
+                # Also fetch Kannada-language sources
+                for entry in _KANNADA_SOURCES:
+                    for feed_url in entry["feeds"]:
+                        try:
+                            kannada_articles = scraper.fetch_rss(feed_url)
+                            for ka in kannada_articles:
+                                ka["city"] = entry["city"]
+                                ka["language"] = entry.get("language", "kn")
+                            all_raw.extend(kannada_articles)
+                        except Exception as exc:
+                            logger.warning(f"[NEWS_AGENT] Kannada feed fetch failed: {exc}")
+
                 seen_urls: set = set()
                 unique = []
                 for a in all_raw:
@@ -167,7 +218,7 @@ class NewsIntelligenceAgent:
                 if len(unique) > _MAX_ARTICLES:
                     unique = unique[:_MAX_ARTICLES]
 
-                logger.info(f"[NEWS_AGENT] {len(unique)} unique articles to scrape")
+                logger.info(f"[NEWS_AGENT] {len(unique)} unique articles to scrape ({len(unique) - sum(1 for a in all_raw if a.get('link') in seen_urls)} new)")
 
                 loop = asyncio.get_event_loop()
                 articles = await loop.run_in_executor(
@@ -250,8 +301,14 @@ class NewsIntelligenceAgent:
             if not text_content or len(text_content) < 50:
                 return []
 
+            source_language = article.get("language", "en")
+            language_note = ""
+            if source_language == "kn":
+                language_note = " This article is in Kannada language. Translate to English before extracting."
+
             prompt = (
-                "Extract WOMEN'S SAFETY incidents from this news article. "
+                "Extract WOMEN'S SAFETY incidents from this news article."
+                + language_note +
                 "ONLY extract incidents relevant to women's safety (crimes against women/girls). "
                 "Skip generic crimes like theft, fraud, accidents, riots, vandalism.\n\n"
                 "Return a JSON array of objects with these fields:\n"
@@ -290,10 +347,20 @@ class NewsIntelligenceAgent:
                 incidents = json.loads(cleaned.strip())
                 if isinstance(incidents, dict):
                     incidents = [incidents]
+                source_cred = self._get_source_credibility(
+                    article.get("link", ""),
+                    article.get("city", ""),
+                )
                 for inc in incidents:
                     inc["source_url"] = article.get("link", "")
                     inc["source_city"] = article.get("city", "")
                     inc["article_title"] = article.get("title", "")
+                    inc["source_credibility"] = source_cred
+                    inc["language"] = source_language
+                    # Adjust AI confidence by source credibility
+                    ai_conf = float(inc.get("confidence", 0.7))
+                    adjusted_conf = ai_conf * (0.5 + 0.5 * source_cred)
+                    inc["confidence"] = round(min(1.0, adjusted_conf), 2)
                 return incidents
             except (json.JSONDecodeError, ValueError) as exc:
                 logger.warning(f"[NEWS_AGENT] Failed to parse AI JSON: {exc}")

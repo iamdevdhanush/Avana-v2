@@ -20,6 +20,8 @@ class RouteSegment(BaseModel):
     risk_category: str
     distance_m: float
     risk_factors: Optional[dict] = None
+    nearby_incidents: Optional[List[str]] = None
+    nearby_types: Optional[List[str]] = None
 
 
 class RouteOption(BaseModel):
@@ -29,6 +31,7 @@ class RouteOption(BaseModel):
     safety_score: float
     segments: List[RouteSegment]
     geometry: List[List[float]]
+    profile: Optional[str] = None
 
 
 class RouteResponse(BaseModel):
@@ -38,3 +41,4 @@ class RouteResponse(BaseModel):
     fastest: RouteOption
     balanced: RouteOption
     explanation: Optional[str] = None
+    profile: Optional[str] = None

@@ -9,9 +9,19 @@ logger = logging.getLogger(__name__)
 _provider_instance = None
 _provider_config: Optional[dict] = None
 
+_fallback_events: List[dict] = []
+
+
+def get_fallback_events() -> List[dict]:
+    return list(_fallback_events)
+
 
 class FallbackProvider(AIProvider):
-    """Chain multiple providers in order. Each fallback is tried on failure."""
+    """Chain multiple providers in order. Each fallback is tried on failure.
+    
+    Fallback chain: OpenRouter -> Gemini -> Mock (implicit)
+    All fallbacks are logged for observability.
+    """
 
     name = "fallback"
 
@@ -34,25 +44,47 @@ class FallbackProvider(AIProvider):
             "providers": statuses,
         }
 
+    def _log_fallback(self, provider_name: str, model: str, success: bool, error: Optional[str] = None):
+        event = {
+            "provider": provider_name,
+            "model": model,
+            "success": success,
+            "error": error,
+        }
+        _fallback_events.append(event)
+        if len(_fallback_events) > 1000:
+            _fallback_events.pop(0)
+        if success:
+            logger.info(f"[AI_FALLBACK] Success: provider={provider_name} model={model}")
+        else:
+            logger.warning(f"[AI_FALLBACK] Failure: provider={provider_name} error={error}")
+
     async def generate(self, prompt: str, system_instruction: str | None = None) -> str:
         last_error = None
         for provider in self.providers:
             try:
                 if not provider.is_available():
+                    logger.info(f"[AI_FALLBACK] Skipping unavailable provider: {provider.name}")
                     continue
-                logger.info(f"[AI_FALLBACK] Trying provider: {provider.name}")
+                logger.info(f"[AI_FALLBACK] Trying provider: {provider.name} model={provider.model_name}")
                 result = await provider.generate(prompt, system_instruction)
                 if result:
+                    self._log_fallback(provider.name, provider.model_name, True)
                     return result
+                self._log_fallback(provider.name, provider.model_name, False, "Empty response")
             except GeminiQuotaExceeded as e:
                 last_error = e
+                self._log_fallback(provider.name, provider.model_name, False, f"Quota exceeded: {e}")
                 logger.warning(f"[AI_FALLBACK] {provider.name} quota exceeded — trying next")
             except Exception as e:
                 last_error = e
+                self._log_fallback(provider.name, provider.model_name, False, str(e))
                 logger.warning(f"[AI_FALLBACK] {provider.name} failed: {e} — trying next")
             continue
         if last_error:
+            logger.error(f"[AI_FALLBACK] All providers failed. Last error: {last_error}")
             raise last_error
+        logger.error("[AI_FALLBACK] No providers available and no error captured")
         return ""
 
     async def generate_structured(self, prompt: str, system_instruction: str) -> dict:
@@ -64,15 +96,19 @@ class FallbackProvider(AIProvider):
                 logger.info(f"[AI_FALLBACK] Trying provider: {provider.name}")
                 result = await provider.generate_structured(prompt, system_instruction)
                 if result:
+                    self._log_fallback(provider.name, provider.model_name, True)
                     return result
             except GeminiQuotaExceeded as e:
                 last_error = e
+                self._log_fallback(provider.name, provider.model_name, False, f"Quota exceeded: {e}")
                 logger.warning(f"[AI_FALLBACK] {provider.name} quota exceeded — trying next")
             except Exception as e:
                 last_error = e
+                self._log_fallback(provider.name, provider.model_name, False, str(e))
                 logger.warning(f"[AI_FALLBACK] {provider.name} failed: {e} — trying next")
             continue
         if last_error:
+            logger.error(f"[AI_FALLBACK] All providers failed for structured generation. Last error: {last_error}")
             raise last_error
         return {}
 
@@ -91,7 +127,7 @@ def _build_provider_from_config(config: dict) -> AIProvider:
     elif provider_name == "auto":
         gemini = GeminiProvider(api_key=api_key, model_name="gemini-2.0-flash")
         openrouter = OpenRouterProvider(api_key=api_key, model=model)
-        return FallbackProvider([gemini, openrouter])
+        return FallbackProvider([openrouter, gemini])
     raise ValueError(f"Unknown provider: {provider_name}")
 
 
@@ -140,6 +176,8 @@ def get_ai_provider() -> AIProvider:
     2. Environment variables (AI_PROVIDER, OPENROUTER_API_KEY, etc.)
     3. If no key configured → returns a provider that reports unavailable
        (agents fall through to mock mode naturally)
+    
+    Fallback order: OpenRouter -> Gemini -> Mock
     """
     from app.utils.timing import Timer
 
@@ -167,7 +205,8 @@ def get_ai_provider() -> AIProvider:
         elif provider_name == "openrouter":
             _provider_instance = openrouter
         else:
-            _provider_instance = FallbackProvider([gemini, openrouter])
+            # Fallback chain: OpenRouter first, then Gemini
+            _provider_instance = FallbackProvider([openrouter, gemini])
 
         logger.info(f"[AI_FACTORY] Provider initialized from env: {_provider_instance.name}")
         return _provider_instance
@@ -175,5 +214,11 @@ def get_ai_provider() -> AIProvider:
 
 def reset_ai_provider():
     """Reset the cached provider (useful for testing or config change)."""
-    global _provider_instance
+    global _provider_instance, _fallback_events
     _provider_instance = None
+    _fallback_events.clear()
+
+
+def get_ai_fallback_events() -> List[dict]:
+    """Return recorded fallback events for observability."""
+    return list(_fallback_events)

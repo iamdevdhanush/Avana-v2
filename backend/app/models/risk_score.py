@@ -14,6 +14,7 @@ class RiskCategory(str, enum.Enum):
     MODERATE = "MODERATE"
     HIGH_RISK = "HIGH_RISK"
     CRITICAL = "CRITICAL"
+    UNKNOWN = "UNKNOWN"
 
 
 class RiskScore(Base):

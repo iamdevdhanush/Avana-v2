@@ -26,7 +26,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/risk", tags=["Risk Assessment"])
 
 
-def _score_to_heat_attrs(score: float) -> tuple:
+def _score_to_heat_attrs(score: float, category: str = "MODERATE") -> tuple:
+    if category == "UNKNOWN":
+        return 0.0, 0
     normalized = max(0.0, min(1.0, score / 100.0))
     if normalized >= 0.75:
         t = (normalized - 0.75) / 0.25
@@ -48,7 +50,7 @@ def _score_to_heat_attrs(score: float) -> tuple:
 
 
 def _make_heatmap_point(lat: float, lng: float, score: float, category: str) -> HeatmapPoint:
-    intensity, radius = _score_to_heat_attrs(score)
+    intensity, radius = _score_to_heat_attrs(score, category)
     return HeatmapPoint(
         latitude=lat,
         longitude=lng,
@@ -197,12 +199,14 @@ async def get_district_risk(
 
     avg_severity = float(row[1]) if row[1] else 0
     risk_score = min(100, (avg_severity / 4.0) * 100)
-    if risk_score <= 30:
+    if risk_score <= 20:
         category = "Safe"
-    elif risk_score <= 60:
+    elif risk_score <= 40:
         category = "Moderate"
-    else:
+    elif risk_score <= 65:
         category = "High Risk"
+    else:
+        category = "Critical"
 
     return {
         "district": district,

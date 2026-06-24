@@ -1,22 +1,18 @@
 """
-Route Intelligence Agent
+Route Intelligence Agent v2
 
-Owns safe route analysis:
-  1. Fetch routes from OSRM (primary + alternatives)
-  2. Score each route segment against the risk score surface
-  3. Rank routes: safest / fastest / balanced
-  4. Build human-readable explanation
-
-All OSRM interaction is via the existing route.py logic re-exposed here
-as a composable agent method. The API endpoint (api/v1/route.py) is unchanged —
-it continues to call its own internal helpers. This agent exists for use by
-the pipeline orchestrator and any future scheduled analysis.
+Improvements:
+- Walking + driving support
+- Incident-based explanations ("Route avoids 3 recent harassment incidents")
+- Nearby incident fetching for each segment
 """
 
 import asyncio
 import logging
 import time
 from typing import List, Optional, Tuple
+
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -25,18 +21,6 @@ _SIMILARITY_THRESHOLD_DEG = 0.01
 
 
 class RouteIntelligenceAgent:
-    """
-    Analyses route safety between two coordinates.
-
-    Usage:
-        agent = RouteIntelligenceAgent()
-        result = await agent.analyze_route(src_lat, src_lng, dst_lat, dst_lng)
-        # result["safest"]   → dict with safety_score, segments, geometry
-        # result["fastest"]  → dict
-        # result["balanced"] → dict
-        # result["explanation"] → str
-    """
-
     name = "route_intelligence"
 
     async def analyze_route(
@@ -45,12 +29,12 @@ class RouteIntelligenceAgent:
         src_lng: float,
         dst_lat: float,
         dst_lng: float,
+        profile: str = "driving",
     ) -> dict:
         start = time.time()
-        logger.info(f"[ROUTE_AGENT] Analyzing route ({src_lat},{src_lng}) → ({dst_lat},{dst_lng})")
+        logger.info(f"[ROUTE_AGENT] Analyzing {profile} route ({src_lat},{src_lng}) → ({dst_lat},{dst_lng})")
 
-        # Step 1 — fetch from OSRM
-        osrm_data = await self._fetch_routes(src_lat, src_lng, dst_lat, dst_lng)
+        osrm_data = await self._fetch_routes(src_lat, src_lng, dst_lat, dst_lng, profile)
         routes = osrm_data.get("routes", [])
         if not routes:
             return {
@@ -59,13 +43,11 @@ class RouteIntelligenceAgent:
                 "metrics": {"duration_seconds": round(time.time() - start, 2)},
             }
 
-        # Step 2 — score each route
         scored = []
         for route_data in routes:
-            scored_route = await self._score_route(route_data)
+            scored_route = await self._score_route(route_data, profile)
             scored.append(scored_route)
 
-        # Step 3 — rank
         by_safety = sorted(scored, key=lambda r: r["safety_score"])
         by_speed = sorted(scored, key=lambda r: r["duration_seconds"])
 
@@ -85,7 +67,7 @@ class RouteIntelligenceAgent:
         else:
             balanced = {**fastest, "type": "balanced"}
 
-        explanation = self._build_explanation(safest, fastest)
+        explanation = await self._build_explanation(safest, fastest, profile)
         duration = round(time.time() - start, 2)
 
         logger.info(
@@ -99,12 +81,9 @@ class RouteIntelligenceAgent:
             "fastest": fastest,
             "balanced": balanced,
             "explanation": explanation,
+            "profile": "Walking" if profile == "walking" else "Driving",
             "metrics": {"duration_seconds": duration},
         }
-
-    # ──────────────────────────────────────────────────────────────────
-    # OSRM
-    # ──────────────────────────────────────────────────────────────────
 
     async def _fetch_routes(
         self,
@@ -112,10 +91,12 @@ class RouteIntelligenceAgent:
         src_lng: float,
         dst_lat: float,
         dst_lng: float,
+        profile: str = "driving",
     ) -> dict:
         import httpx
+        profile_path = "driving" if profile == "driving" else "foot"
         url = (
-            f"{_OSRM_BASE_URL}/route/v1/driving/"
+            f"{_OSRM_BASE_URL}/route/v1/{profile_path}/"
             f"{src_lng},{src_lat};{dst_lng},{dst_lat}"
             "?overview=full&geometries=geojson&steps=true&alternatives=3"
         )
@@ -133,11 +114,34 @@ class RouteIntelligenceAgent:
                     return {"routes": []}
         return {"routes": []}
 
-    # ──────────────────────────────────────────────────────────────────
-    # Risk scoring
-    # ──────────────────────────────────────────────────────────────────
+    async def _fetch_nearby_incidents(self, lat: float, lng: float, radius_m: int = 500) -> list:
+        from app.database import get_session_factory
+        try:
+            factory = get_session_factory()
+            async with factory() as session:
+                result = await session.execute(
+                    text("""
+                        SELECT metadata->>'women_safety_category' as ws_cat,
+                               incident_type, title, severity, created_at
+                        FROM incidents
+                        WHERE ST_DWithin(
+                            geom::geography,
+                            ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
+                            :radius
+                        )
+                          AND status::text IN ('verified', 'VERIFIED')
+                          AND metadata->>'women_safety_category' IS NOT NULL
+                        ORDER BY created_at DESC
+                        LIMIT 5
+                    """),
+                    {"lat": lat, "lng": lng, "radius": radius_m},
+                )
+                return [{"category": r[0], "type": r[1], "title": r[2], "severity": r[3], "date": r[4]} for r in result.fetchall()]
+        except Exception as e:
+            logger.warning(f"[ROUTE_AGENT] Nearby incidents fetch failed: {e}")
+            return []
 
-    async def _score_route(self, route_data: dict) -> dict:
+    async def _score_route(self, route_data: dict, profile: str = "driving") -> dict:
         from app.pipeline.risk import score_location
 
         leg = route_data.get("legs", [{}])[0]
@@ -150,6 +154,7 @@ class RouteIntelligenceAgent:
         total_risk = 0.0
         total_distance = 0.0
         segments = []
+        all_nearby = []
 
         for step in steps:
             seg_coords = step.get("geometry", {}).get("coordinates", [])
@@ -167,6 +172,9 @@ class RouteIntelligenceAgent:
                 seg_score = 50.0
                 score_result = {"category": "MODERATE", "factors": {}}
 
+            nearby = await self._fetch_nearby_incidents(start_coord[1], start_coord[0], 300)
+            all_nearby.extend(nearby)
+
             total_risk += seg_score * step_dist
             segments.append({
                 "start_lat": start_coord[1],
@@ -176,6 +184,8 @@ class RouteIntelligenceAgent:
                 "safety_score": round(seg_score, 2),
                 "risk_category": score_result.get("category", "MODERATE"),
                 "distance_m": step_dist,
+                "nearby_incidents": [n.get("category") for n in nearby[:3] if n.get("category")],
+                "nearby_types": [n.get("type") for n in nearby[:3]],
             })
 
         avg_safety = round(total_risk / total_distance, 2) if total_distance > 0 else 50.0
@@ -189,28 +199,37 @@ class RouteIntelligenceAgent:
             "distance_km": distance_km,
             "segments": segments,
             "geometry": geometry_coords,
+            "nearby_incidents_summary": all_nearby,
         }
 
-    # ──────────────────────────────────────────────────────────────────
-    # Explanation
-    # ──────────────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _build_explanation(safest: dict, fastest: dict) -> str:
+    async def _build_explanation(self, safest: dict, fastest: dict, profile: str = "driving") -> str:
         reasons = []
+        profile_label = "Walking" if profile == "walking" else "Driving"
+
         if safest["safety_score"] < fastest["safety_score"]:
             diff = round(fastest["safety_score"] - safest["safety_score"], 1)
-            reasons.append(f"Avoids {diff} pts higher risk areas")
+            reasons.append(f"{profile_label} route avoids {diff} pts higher risk areas")
 
-        safe_segs = [s for s in safest.get("segments", []) if s["safety_score"] <= 33]
+        # Collect incident-specific details
+        all_nearby = safest.get("nearby_incidents_summary", [])
+        incident_types = {}
+        for n in all_nearby:
+            cat = n.get("category") or n.get("type") or "incident"
+            incident_types[cat] = incident_types.get(cat, 0) + 1
+
+        if incident_types:
+            for cat, count in list(incident_types.items())[:3]:
+                reasons.append(f"Route avoids {count} recent {cat.lower()} reports")
+
+        safe_segs = [s for s in safest.get("segments", []) if s["safety_score"] <= 20]
         if safe_segs:
-            reasons.append(f"Passes through {len(safe_segs)} safer segments")
+            reasons.append(f"Passes through {len(safe_segs)} low-risk street segments")
 
-        high_risk = [s for s in fastest.get("segments", []) if s["safety_score"] > 66]
+        high_risk = [s for s in fastest.get("segments", []) if s["safety_score"] > 65]
         if high_risk:
             reasons.append(f"Avoids {len(high_risk)} high-risk zones on fastest path")
 
         if not reasons:
-            reasons.append("Route risk assessment complete")
+            reasons.append(f"{profile_label} route risk assessment complete")
 
-        return " | ".join(reasons[:4])
+        return " | ".join(reasons[:5])

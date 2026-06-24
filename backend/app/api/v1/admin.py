@@ -269,6 +269,12 @@ async def moderate_incident(
 
     incident.moderated_by = admin.id
     incident.updated_at = datetime.now(timezone.utc)
+    if body.moderation_notes:
+        meta = dict(incident.meta_data or {})
+        meta["review_notes"] = body.moderation_notes
+        meta["reviewed_at"] = datetime.now(timezone.utc).isoformat()
+        meta["reviewed_by"] = str(admin.id)
+        incident.meta_data = meta
     await _log_admin_action(request, db, admin, "moderate_incident", "incident", str(incident.id), {
         "status": body.status, "notes": body.moderation_notes,
     })
@@ -279,6 +285,7 @@ async def moderate_incident(
         "status": incident.status.value if hasattr(incident.status, "value") else incident.status,
         "moderated_by": str(admin.id),
         "moderation_notes": body.moderation_notes,
+        "review_complete": body.status in ("VERIFIED", "DISMISSED", "DUPLICATE", "SPAM"),
     }
 
 
@@ -887,3 +894,161 @@ async def admin_seed(
         details={"force": force, "results": results},
     )
     return {"status": "ok", "results": results}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Intelligence Observability Endpoint
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/intelligence/observability")
+async def intelligence_observability(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Comprehensive intelligence pipeline observability metrics."""
+
+    # Articles processed from news_articles
+    articles_total = await db.execute(text("SELECT COUNT(*) FROM news_articles"))
+    articles_processed = await db.execute(
+        text("SELECT COUNT(*) FROM news_articles WHERE is_processed = true")
+    )
+
+    # Incidents by status
+    incidents_total = await db.execute(text("SELECT COUNT(*) FROM incidents"))
+    incidents_verified = await db.execute(
+        text("SELECT COUNT(*) FROM incidents WHERE status::text IN ('verified', 'VERIFIED')")
+    )
+    incidents_pending = await db.execute(
+        text("SELECT COUNT(*) FROM incidents WHERE status::text IN ('pending', 'PENDING')")
+    )
+    incidents_rejected = await db.execute(
+        text("SELECT COUNT(*) FROM incidents WHERE status::text IN ('dismissed', 'DISMISSED', 'duplicate', 'DUPLICATE', 'spam', 'SPAM')")
+    )
+
+    # Confidence distribution
+    conf_distribution = await db.execute(text("""
+        SELECT
+            COUNT(*) FILTER (WHERE confidence_score >= 0.8) as high_confidence,
+            COUNT(*) FILTER (WHERE confidence_score >= 0.5 AND confidence_score < 0.8) as medium_confidence,
+            COUNT(*) FILTER (WHERE confidence_score < 0.5) as low_confidence
+        FROM incidents
+    """))
+    conf_row = conf_distribution.fetchone()
+
+    # Geocoding success rate
+    geocoded = await db.execute(
+        text("SELECT COUNT(*) FROM incidents WHERE latitude IS NOT NULL AND longitude IS NOT NULL")
+    )
+    geocode_total = await db.execute(text("SELECT COUNT(*) FROM incidents"))
+    geo_total_count = geocode_total.scalar() or 1
+
+    # Geocoding confidence breakdown
+    geo_confidence = await db.execute(text("""
+        SELECT
+            COUNT(*) FILTER (WHERE metadata->>'geocoding_confidence' = 'HIGH') as high,
+            COUNT(*) FILTER (WHERE metadata->>'geocoding_confidence' = 'MEDIUM') as medium,
+            COUNT(*) FILTER (WHERE metadata->>'geocoding_confidence' = 'LOW') as low,
+            COUNT(*) FILTER (WHERE metadata->>'geocoding_confidence' IS NULL) as unknown
+        FROM incidents
+    """))
+    geo_conf_row = geo_confidence.fetchone()
+
+    # Source breakdown
+    by_source = await db.execute(
+        text("SELECT source, COUNT(*) as cnt FROM incidents GROUP BY source ORDER BY cnt DESC")
+    )
+
+    # Pipeline runs
+    pipeline_runs_total = await db.execute(text("SELECT COUNT(*) FROM pipeline_runs"))
+    pipeline_runs_success = await db.execute(
+        text("SELECT COUNT(*) FROM pipeline_runs WHERE status = 'completed'")
+    )
+    pipeline_runs_failed = await db.execute(
+        text("SELECT COUNT(*) FROM pipeline_runs WHERE status = 'failed'")
+    )
+    pipeline_runs_total_count = pipeline_runs_total.scalar() or 0
+    pipeline_success_rate = round(
+        (pipeline_runs_success.scalar() or 0) / max(pipeline_runs_total_count, 1) * 100, 1
+    )
+
+    # Last 10 pipeline runs
+    last_runs = await db.execute(
+        text("""
+            SELECT pipeline_type, status, duration_ms, started_at, completed_at
+            FROM pipeline_runs
+            ORDER BY started_at DESC
+            LIMIT 10
+        """)
+    )
+
+    # Security incidents by type
+    by_type = await db.execute(
+        text("SELECT incident_type, COUNT(*) as cnt FROM incidents GROUP BY incident_type ORDER BY cnt DESC")
+    )
+
+    # Risk score distribution
+    risk_categories = await db.execute(text("""
+        SELECT category, COUNT(*) as cnt
+        FROM risk_scores
+        GROUP BY category
+        ORDER BY cnt DESC
+    """))
+
+    # AI provider usage from pipeline runs metadata
+    ai_provider_usage = await db.execute(text("""
+        SELECT
+            COALESCE(steps->'news'->>'provider', 'unknown') as provider,
+            COUNT(*) as cnt
+        FROM pipeline_runs
+        WHERE pipeline_type = 'news'
+        GROUP BY provider
+        ORDER BY cnt DESC
+    """))
+
+    return {
+        "articles": {
+            "total": articles_total.scalar() or 0,
+            "processed": articles_processed.scalar() or 0,
+        },
+        "incidents": {
+            "total": incidents_total.scalar() or 0,
+            "verified": incidents_verified.scalar() or 0,
+            "pending_review": incidents_pending.scalar() or 0,
+            "rejected": incidents_rejected.scalar() or 0,
+        },
+        "confidence_distribution": {
+            "high_confidence": int(conf_row[0]) if conf_row else 0,
+            "medium_confidence": int(conf_row[1]) if conf_row else 0,
+            "low_confidence": int(conf_row[2]) if conf_row else 0,
+        },
+        "geocoding": {
+            "success_rate": round((geocoded.scalar() or 0) / geo_total_count * 100, 1),
+            "geocoded": geocoded.scalar() or 0,
+            "total": geo_total_count,
+            "confidence_breakdown": {
+                "high": int(geo_conf_row[0]) if geo_conf_row else 0,
+                "medium": int(geo_conf_row[1]) if geo_conf_row else 0,
+                "low": int(geo_conf_row[2]) if geo_conf_row else 0,
+                "unknown": int(geo_conf_row[3]) if geo_conf_row else 0,
+            },
+        },
+        "sources": {str(r[0]): int(r[1]) for r in by_source.fetchall()},
+        "incident_types": {str(r[0]): int(r[1]) for r in by_type.fetchall()},
+        "risk_category_distribution": {str(r[0]): int(r[1]) for r in risk_categories.fetchall()},
+        "pipeline": {
+            "total_runs": pipeline_runs_total_count,
+            "success_rate": pipeline_success_rate,
+            "failed_runs": pipeline_runs_failed.scalar() or 0,
+            "last_10_runs": [
+                {
+                    "pipeline_type": r[0],
+                    "status": r[1],
+                    "duration_ms": r[2],
+                    "started_at": r[3].isoformat() if r[3] else None,
+                    "completed_at": r[4].isoformat() if r[4] else None,
+                }
+                for r in last_runs.fetchall()
+            ],
+        },
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }

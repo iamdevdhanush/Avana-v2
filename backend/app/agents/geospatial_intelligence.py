@@ -1,16 +1,16 @@
 """
-Geospatial Intelligence Agent
+Geospatial Intelligence Agent v2
 
-Owns coordinate resolution and deduplication:
-  1. Geocode location strings -> lat/lng via Nominatim (with DB cache)
-  2. Deduplicate against existing incidents (URL + title similarity + spatial)
-  3. Persist verified incidents to PostGIS incidents table
-  4. Mark corresponding news_articles as processed
+Enhancements:
+- Geocoding confidence: LOW/MEDIUM/HIGH based on district match
+- District mismatch flagging (AI-extracted vs Nominatim)
+- Overall intelligence confidence computation
+- Source credibility recording
 """
 
 import logging
 import time
-from typing import List
+from typing import List, Optional
 
 from sqlalchemy import select, text
 from geoalchemy2.elements import WKTElement
@@ -24,6 +24,10 @@ from app.pipeline.women_safety import (
     WOMEN_SAFETY_TO_INCIDENT_TYPE,
     get_women_safety_details,
     is_women_safety_category,
+)
+from app.pipeline.confidence import (
+    compute_geocoding_confidence,
+    compute_overall_confidence,
 )
 from app.services.nominatim import NominatimService
 from app.utils.dedup import (
@@ -73,10 +77,14 @@ class GeospatialIntelligenceAgent:
         }
 
     async def _geocode(self, incidents: List[dict]) -> List[dict]:
-        with Timer("10. Geocoding (Nominatim + cache)"):
+        with Timer("10. Geocoding (Nominatim + cache + validation)"):
             nominatim = NominatimService()
             cache_hits = 0
             cache_misses = 0
+            geo_confidence_high = 0
+            geo_confidence_medium = 0
+            geo_confidence_low = 0
+            district_mismatches = 0
 
             factory = get_session_factory()
             async with factory() as session:
@@ -90,6 +98,8 @@ class GeospatialIntelligenceAgent:
                         if not location_str and not had_coords:
                             inc["latitude"] = None
                             inc["longitude"] = None
+                            inc["geocoding_confidence"] = "LOW"
+                            inc["geocoding_confidence_score"] = 0.0
                             continue
 
                         query = f"{location_str}, Karnataka, India"
@@ -108,33 +118,75 @@ class GeospatialIntelligenceAgent:
                                     {"q": query},
                                 )
                                 cache_hits += 1
-                                continue
-
-                            cache_misses += 1
-                            named = await nominatim.geocode(query)
-                            if named:
-                                inc["latitude"] = float(named["lat"])
-                                inc["longitude"] = float(named["lng"])
-                                inc["display_name"] = named.get("display_name", "")
-                                await session.execute(
-                                    text("""
-                                        INSERT INTO geocoding_cache
-                                            (id, location_text, latitude, longitude, display_name, last_verified, created_at)
-                                        VALUES (gen_random_uuid(), :q, :lat, :lng, :dn, NOW(), NOW())
-                                        ON CONFLICT (location_text) DO NOTHING
-                                    """),
-                                    {"q": query, "lat": inc["latitude"], "lng": inc["longitude"], "dn": inc.get("display_name", "")},
-                                )
                             else:
-                                if not had_coords:
-                                    inc["latitude"] = None
-                                    inc["longitude"] = None
+                                cache_misses += 1
+                                named = await nominatim.geocode(query)
+                                if named:
+                                    inc["latitude"] = float(named["lat"])
+                                    inc["longitude"] = float(named["lng"])
+                                    inc["display_name"] = named.get("display_name", "")
+                                    await session.execute(
+                                        text("""
+                                            INSERT INTO geocoding_cache
+                                                (id, location_text, latitude, longitude, display_name, last_verified, created_at)
+                                            VALUES (gen_random_uuid(), :q, :lat, :lng, :dn, NOW(), NOW())
+                                            ON CONFLICT (location_text) DO NOTHING
+                                        """),
+                                        {"q": query, "lat": inc["latitude"], "lng": inc["longitude"], "dn": inc.get("display_name", "")},
+                                    )
+                                else:
+                                    if not had_coords:
+                                        inc["latitude"] = None
+                                        inc["longitude"] = None
+
+                            # Geocoding confidence and district validation
+                            if inc.get("latitude") is not None and inc.get("latitude"):
+                                # Extract district from Nominatim display_name
+                                nominatim_district = await self._extract_district_from_display_name(
+                                    inc.get("display_name", ""),
+                                    nominatim,
+                                    inc["latitude"],
+                                    inc["longitude"],
+                                )
+                                ai_district = inc.get("district", "")
+
+                                geo_label, geo_score = compute_geocoding_confidence(
+                                    ai_district, nominatim_district, True
+                                )
+                                inc["geocoding_confidence"] = geo_label
+                                inc["geocoding_confidence_score"] = geo_score
+
+                                if geo_label == "HIGH":
+                                    geo_confidence_high += 1
+                                elif geo_label == "MEDIUM":
+                                    geo_confidence_medium += 1
+                                else:
+                                    geo_confidence_low += 1
+
+                                if ai_district and nominatim_district and geo_label == "LOW":
+                                    district_mismatches += 1
+                                    logger.warning(
+                                        f"[GEO_AGENT] District mismatch: AI='{ai_district}' "
+                                        f"vs Nominatim='{nominatim_district}' for '{location_str}'"
+                                    )
+                                # Use Nominatim district if AI district is missing or mismatched
+                                if (not ai_district or geo_label == "LOW") and nominatim_district:
+                                    inc["district"] = nominatim_district
+                                    logger.info(
+                                        f"[GEO_AGENT] Overrode AI district '{ai_district}' "
+                                        f"with Nominatim district '{nominatim_district}'"
+                                    )
+                            else:
+                                inc["geocoding_confidence"] = "LOW"
+                                inc["geocoding_confidence_score"] = 0.0
 
                         except Exception as exc:
                             logger.warning(f"[GEO_AGENT] Geocode error for '{location_str}': {exc}")
                             if not had_coords:
                                 inc["latitude"] = None
                                 inc["longitude"] = None
+                            inc["geocoding_confidence"] = "LOW"
+                            inc["geocoding_confidence_score"] = 0.0
 
                     await session.commit()
                 finally:
@@ -146,7 +198,44 @@ class GeospatialIntelligenceAgent:
                     f"[GEO_AGENT] Geocoding cache: {cache_hits}/{total} hits "
                     f"({cache_hits / total * 100:.1f}%)"
                 )
+            logger.info(
+                f"[GEO_AGENT] Geocoding confidence: HIGH={geo_confidence_high} "
+                f"MEDIUM={geo_confidence_medium} LOW={geo_confidence_low} "
+                f"mismatches={district_mismatches}"
+            )
             return incidents
+
+    async def _extract_district_from_display_name(
+        self,
+        display_name: str,
+        nominatim: NominatimService,
+        lat: float,
+        lng: float,
+    ) -> Optional[str]:
+        if not display_name:
+            return None
+        # Try to extract district from display name
+        parts = display_name.split(",")
+        # Karnataka districts typically appear as "Bengaluru Urban", "Mysuru", etc.
+        # The state_district or county field in Nominatim results
+        try:
+            reverse_result = await nominatim.reverse_geocode(lat, lng)
+            if reverse_result:
+                return reverse_result.get("district") or reverse_result.get("county")
+        except Exception:
+            pass
+        # Fallback: extract from display_name
+        for i, part in enumerate(parts):
+            part_clean = part.strip()
+            if part_clean.lower() in (
+                "karnataka", "india", "bengaluru", "bangalore",
+            ):
+                continue
+            if i < len(parts) - 2:
+                candidate = parts[i].strip()
+                if candidate and len(candidate) > 3:
+                    return candidate
+        return None
 
     def _is_duplicate(
         self,
@@ -261,6 +350,31 @@ class GeospatialIntelligenceAgent:
         else:
             meta["women_safety_category"] = None
             meta["women_safety_weight"] = None
+
+        # Compute overall intelligence confidence
+        geocoding_label = inc.get("geocoding_confidence", "MEDIUM")
+        geocoding_score = inc.get("geocoding_confidence_score", 0.7)
+        source_str = inc.get("source", "NEWS") if not inc.get("source") else "NEWS"
+
+        overall_confidence = compute_overall_confidence(
+            ai_confidence=confidence,
+            source=source_str,
+            source_url=inc.get("source_url"),
+            geocoding_label=geocoding_label,
+            geocoding_score=geocoding_score,
+            is_duplicate=False,
+            is_reviewed=False,
+            status="PENDING",
+        )
+
+        meta["intelligence_confidence"] = overall_confidence
+        meta["geocoding_confidence"] = geocoding_label
+        meta["geocoding_confidence_score"] = geocoding_score
+        meta["source_credibility"] = confidence
+        if inc.get("source_credibility"):
+            meta["source_credibility"] = inc["source_credibility"]
+        if inc.get("language"):
+            meta["source_language"] = inc["language"]
 
         return Incident(
             incident_type=itype,

@@ -88,7 +88,7 @@ export interface Incident {
 
 export interface RiskScore {
   score: number
-  category: 'safe' | 'low' | 'moderate' | 'high' | 'critical'
+  category: 'safe' | 'low' | 'moderate' | 'high' | 'critical' | 'unknown'
   factors: RiskFactor[]
   location: {
     lat: number
