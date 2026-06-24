@@ -57,7 +57,7 @@ async def compute_localized_bounds(buffer_degrees: float = 0.05, max_cells_per: 
                 WHERE latitude IS NOT NULL
                   AND metadata->>'women_safety_category' IS NOT NULL
                   AND status::text IN ('verified', 'VERIFIED')
-                  AND created_at >= NOW() - INTERVAL '1 hour'
+                  AND created_at >= NOW() - INTERVAL '7 days'
                 GROUP BY district
             """)
         )
