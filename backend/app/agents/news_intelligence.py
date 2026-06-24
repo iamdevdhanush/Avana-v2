@@ -140,28 +140,25 @@ class NewsIntelligenceAgent:
         incidents: List[dict] = []
         ai_success = 0
         ai_failure = 0
-        try:
-            sem = asyncio.Semaphore(5)
-            async def _extract_one(a: dict) -> List[dict]:
-                async with sem:
-                    try:
-                        result = await self._extract_incidents(a)
-                        if result:
-                            nonlocal ai_success
-                            ai_success += 1
-                        else:
-                            nonlocal ai_failure
-                            ai_failure += 1
-                        return result
-                    except Exception as exc:
-                        logger.warning(f"[NEWS_AGENT] Extraction failed for '{a.get('title', '')}': {exc}")
-                        nonlocal ai_failure
+        sem = asyncio.Semaphore(5)
+        async def _extract_one(a: dict) -> List[dict]:
+            nonlocal ai_success, ai_failure
+            async with sem:
+                try:
+                    result = await self._extract_incidents(a)
+                    if result:
+                        ai_success += 1
+                    else:
                         ai_failure += 1
-                        return []
-            results = await asyncio.gather(*[_extract_one(a) for a in articles], return_exceptions=True)
-            for r in results:
-                if isinstance(r, list):
-                    incidents.extend(r)
+                    return result
+                except Exception as exc:
+                    logger.warning(f"[NEWS_AGENT] Extraction failed for '{a.get('title', '')}': {exc}")
+                    ai_failure += 1
+                    return []
+        results = await asyncio.gather(*[_extract_one(a) for a in articles], return_exceptions=True)
+        for r in results:
+            if isinstance(r, list):
+                incidents.extend(r)
 
         logger.info(
             f"[NEWS_AGENT] Extraction: {ai_success} AI calls succeeded, "

@@ -220,5 +220,5 @@ async def get_status(
         active_config=_to_response(active) if active else None,
         env_provider=settings.AI_PROVIDER,
         env_model=settings.OPENROUTER_MODEL,
-        env_has_key=bool(settings.GEMINI_API_KEY or settings.OPENROUTER_API_KEY),
+        env_has_key=bool(settings.OPENROUTER_API_KEY),
     )

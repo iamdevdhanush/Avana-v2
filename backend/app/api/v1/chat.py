@@ -51,7 +51,7 @@ async def send_message(
     except ImportError:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="AI chat service not available. Configure GEMINI_API_KEY or OPENROUTER_API_KEY.",
+            detail="AI chat service not available. Configure OPENROUTER_API_KEY.",
         )
     except Exception as e:
         raise HTTPException(

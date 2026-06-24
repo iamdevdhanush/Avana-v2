@@ -3,7 +3,7 @@ Community Intelligence Agent
 
 Owns processing of user-submitted safety reports:
   1. Fetch pending safety_reports (LIMIT 50)
-  2. Validate each via Gemini (type, severity, women-safety category)
+   2. Validate each via AI (type, severity, women-safety category)
   3. Spam filter (invalid location / bad description)
   4. Spatial deduplication against existing incidents (100m radius)
   5. Promote high-confidence verified reports to incidents table
@@ -140,7 +140,7 @@ class CommunityIntelligenceAgent:
         ]
 
     # ──────────────────────────────────────────────────────────────────
-    # Step 2: Gemini validation
+    # Step 2: AI validation
     # ──────────────────────────────────────────────────────────────────
 
     async def _classify(self, reports: List[dict]) -> List[dict]:

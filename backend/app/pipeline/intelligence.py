@@ -1,7 +1,7 @@
 """
 Intelligence Pipeline — Simplified, no LangGraph.
 
-Flow: Admin triggers → fetch news → parse → Gemini extract → geocode → save → update risk → regenerate heatmap
+Flow: Admin triggers → fetch news → parse → AI extract → geocode → save → update risk → regenerate heatmap
 
 All async, single process. No Celery, no Redis, no state machines.
 """
@@ -24,8 +24,19 @@ from app.pipeline.women_safety import (
     WOMEN_SAFETY_CATEGORIES, WOMEN_SAFETY_TO_INCIDENT_TYPE,
     get_women_safety_details, is_women_safety_category,
 )
-from app.services.gemini import gemini_service, GeminiQuotaExceeded
 from app.services.news_scraper import NewsScraper
+from app.services.ai.factory import get_ai_provider
+
+_ai_provider = None
+
+def _get_provider():
+    global _ai_provider
+    if _ai_provider is None:
+        _ai_provider = get_ai_provider()
+    return _ai_provider
+
+class GeminiQuotaExceeded(Exception):
+    pass
 from app.services.nominatim import NominatimService
 from app.utils.dedup import is_duplicate_by_title_and_proximity
 
@@ -137,7 +148,7 @@ async def extract_incidents_from_article(article: dict) -> List[dict]:
         "ONLY extract crimes against women and girls. Exclude all other crime types. "
         "Return ONLY valid JSON. No markdown, no explanations."
     )
-    response = gemini_service.generate(prompt, system_instruction=system)
+    response = await _get_provider().generate(prompt, system_instruction=system)
     if not response:
         return []
     cleaned = response.strip()
@@ -157,7 +168,7 @@ async def extract_incidents_from_article(article: dict) -> List[dict]:
             inc["article_title"] = article.get("title", "")
         return incidents
     except (json.JSONDecodeError, ValueError) as e:
-        logger.warning(f"Failed to parse Gemini output: {e}")
+        logger.warning(f"Failed to parse AI output: {e}")
         return []
 
 
@@ -370,9 +381,8 @@ async def run_intelligence_pipeline() -> dict:
     if mock_mode:
         logger.info("MOCK_INTELLIGENCE_MODE enabled — using mock data")
     else:
-        reason = gemini_service.get_unavailable_reason()
-        if reason:
-            logger.info(f"[PIPELINE] Gemini {reason} — falling back to mock data automatically")
+        if not _get_provider().is_available():
+            logger.info("[PIPELINE] AI provider unavailable — falling back to mock data automatically")
             mock_mode = True
 
     if mock_mode:

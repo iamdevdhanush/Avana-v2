@@ -148,7 +148,7 @@ async def _load_ai_db_config():
 
 async def _bootstrap_offline_data():
     """
-    Offline-first bootstrap. Never depends on Gemini.
+    Offline-first bootstrap. Never depends on external AI.
     Seeds from CSV if database is empty, generates risk_scores and heatmap.
     """
     from sqlalchemy import text
@@ -487,8 +487,7 @@ async def debug_ai(admin: User = Depends(require_admin)):
         "diagnostics": {
             "AI_PROVIDER": settings.AI_PROVIDER,
             "configured_provider": ai.name,
-            "GEMINI_API_KEY_configured": bool(settings.GEMINI_API_KEY),
-            "GEMINI_API_KEY_length": len(settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else 0,
+
             "OPENROUTER_API_KEY_configured": bool(settings.OPENROUTER_API_KEY),
             "OPENROUTER_MODEL": settings.OPENROUTER_MODEL,
             "provider_status": ai_status,

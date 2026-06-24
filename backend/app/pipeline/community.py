@@ -225,7 +225,7 @@ async def process_pending_reports() -> dict:
                         logger.warning(f"[COMMUNITY_PIPELINE] Report {report['id']} has no women_safety_category — excluded from risk/heatmap")
 
                     is_ai_classified = False
-                incident = Incident(
+                    incident = Incident(
                         incident_type=itype,
                         severity=severity,
                         source=IncidentSource.COMMUNITY_REPORT,

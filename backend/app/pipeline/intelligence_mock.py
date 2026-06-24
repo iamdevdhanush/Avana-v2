@@ -1,7 +1,7 @@
 """
 Mock intelligence data provider — Women's Safety Only.
 
-When MOCK_INTELLIGENCE_MODE=true, replaces Gemini extraction with
+When MOCK_INTELLIGENCE_MODE=true, replaces AI extraction with
 5 women-safety-only incident objects to exercise the full pipeline:
   fetch → dedup → geocode → save → risk → heatmap
 
