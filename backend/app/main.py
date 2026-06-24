@@ -479,15 +479,20 @@ async def debug_ai(admin: User = Depends(require_admin)):
     from app.services.ai.factory import get_ai_provider
 
 
+    from app.services.ai.factory import _provider_config, _provider_built_from_db
+
     ai = get_ai_provider()
     ai_status = ai.get_status()
+    config_source = "database" if _provider_built_from_db else ("env" if _provider_config else "none")
 
     result = {
         "status": "failure",
         "diagnostics": {
+            "config_source": config_source,
+            "db_config_loaded": _provider_config is not None,
+            "provider_built_from_db": _provider_built_from_db,
             "AI_PROVIDER": settings.AI_PROVIDER,
             "configured_provider": ai.name,
-
             "OPENROUTER_API_KEY_configured": bool(settings.OPENROUTER_API_KEY),
             "OPENROUTER_MODEL": settings.OPENROUTER_MODEL,
             "provider_status": ai_status,

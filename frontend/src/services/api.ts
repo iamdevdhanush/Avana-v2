@@ -758,7 +758,7 @@ export const adminApi = {
   // Valid names: intelligence, community, risk
   runPipeline: async (pipelineName: PipelineName): Promise<PipelineRunResult> => {
     try {
-      const { data: raw } = await api.post(`/admin/pipeline/run/${pipelineName}`)
+      const { data: raw } = await api.post(`/admin/pipeline/run/${pipelineName}`, {}, { timeout: 180000 })
       const outer = (raw.data || raw) as Record<string, unknown>
       const result = (outer.result || {}) as Record<string, unknown>
       const summary = (result.summary || {}) as Record<string, unknown>

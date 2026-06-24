@@ -184,10 +184,10 @@ def get_ai_provider() -> AIProvider:
 
         db_config = _provider_config
         if db_config:
-            logger.info(f"[AI_FACTORY] Using database config: provider={db_config['provider']} model={db_config['model']}")
+            logger.info(f"[AI_FACTORY][source=DB] Using database config: provider={db_config['provider']} model={db_config['model']}")
             _provider_instance = _build_provider_from_config(db_config)
             _provider_built_from_db = True
-            logger.info(f"[AI_FACTORY] DB provider online: {_provider_instance.name} model={_provider_instance.model_name}")
+            logger.info(f"[AI_FACTORY][source=DB] Provider online: {_provider_instance.name} model={_provider_instance.model_name}")
             return _provider_instance
 
         provider_name = (settings.AI_PROVIDER or "auto").strip().lower()
@@ -195,7 +195,7 @@ def get_ai_provider() -> AIProvider:
         openrouter = OpenRouterProvider()
 
         logger.info(
-            f"[AI_FACTORY] Env config: AI_PROVIDER={provider_name} "
+            f"[AI_FACTORY][source=ENV] Env config: AI_PROVIDER={provider_name} "
             f"OPENROUTER_API_KEY={'set' if settings.OPENROUTER_API_KEY else 'unset'} "
             f"openrouter_available={openrouter.is_available()}"
         )
@@ -207,7 +207,7 @@ def get_ai_provider() -> AIProvider:
         _provider_built_from_db = False
 
         logger.info(
-            f"[AI_FACTORY] Provider initialized: {_provider_instance.name} "
+            f"[AI_FACTORY][source=ENV] Provider initialized: {_provider_instance.name} "
             f"model={_provider_instance.model_name} "
             f"available={_provider_instance.is_available()}"
         )
@@ -231,7 +231,7 @@ async def reload_db_config():
     config = await _load_db_config()
     if config:
         _provider_config = config
-        logger.info(f"[AI_FACTORY] Reloaded DB config: provider={config['provider']} model={config['model']}")
+        logger.info(f"[AI_FACTORY][source=DB] Reloaded DB config: provider={config['provider']} model={config['model']}")
     else:
         logger.info("[AI_FACTORY] No active DB config after reload")
 
