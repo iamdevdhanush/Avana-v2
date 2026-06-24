@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 _provider_instance = None
 _provider_config: Optional[dict] = None
+_provider_built_from_db = False
 
 _fallback_events: List[dict] = []
 
@@ -170,9 +171,12 @@ def get_ai_provider() -> AIProvider:
     """
     from app.utils.timing import Timer
 
-    global _provider_instance
+    global _provider_instance, _provider_built_from_db
     if _provider_instance is not None:
-        return _provider_instance
+        if not _provider_built_from_db and _provider_config is not None:
+            _provider_instance = None
+        else:
+            return _provider_instance
 
     with Timer("6. AI provider initialization"):
         from app.config import settings
@@ -182,6 +186,7 @@ def get_ai_provider() -> AIProvider:
         if db_config:
             logger.info(f"[AI_FACTORY] Using database config: provider={db_config['provider']} model={db_config['model']}")
             _provider_instance = _build_provider_from_config(db_config)
+            _provider_built_from_db = True
             logger.info(f"[AI_FACTORY] DB provider online: {_provider_instance.name} model={_provider_instance.model_name}")
             return _provider_instance
 
@@ -199,6 +204,7 @@ def get_ai_provider() -> AIProvider:
             _provider_instance = openrouter
         else:
             _provider_instance = FallbackProvider([openrouter])
+        _provider_built_from_db = False
 
         logger.info(
             f"[AI_FACTORY] Provider initialized: {_provider_instance.name} "
@@ -210,16 +216,18 @@ def get_ai_provider() -> AIProvider:
 
 def reset_ai_provider():
     """Reset the cached provider (useful for testing or config change)."""
-    global _provider_instance, _fallback_events
+    global _provider_instance, _fallback_events, _provider_built_from_db
     _provider_instance = None
     _fallback_events.clear()
+    _provider_built_from_db = False
 
 
 async def reload_db_config():
     """Reset and reload the provider config from the database."""
-    global _provider_instance, _provider_config
+    global _provider_instance, _provider_config, _provider_built_from_db
     _provider_instance = None
     _provider_config = None
+    _provider_built_from_db = False
     config = await _load_db_config()
     if config:
         _provider_config = config

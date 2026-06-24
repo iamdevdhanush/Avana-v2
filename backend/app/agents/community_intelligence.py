@@ -64,7 +64,10 @@ class CommunityIntelligenceAgent:
 
     def __init__(self):
         self._categories_list = sorted(WOMEN_SAFETY_CATEGORIES.keys())
-        self._ai = get_ai_provider()
+
+    @property
+    def _ai(self):
+        return get_ai_provider()
 
     async def run(self) -> dict:
         start = time.time()

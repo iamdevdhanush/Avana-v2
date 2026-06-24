@@ -87,7 +87,10 @@ class NewsIntelligenceAgent:
 
     def __init__(self):
         self._categories_list = sorted(WOMEN_SAFETY_CATEGORIES.keys())
-        self._ai = get_ai_provider()
+
+    @property
+    def _ai(self):
+        return get_ai_provider()
 
     @staticmethod
     def _get_source_credibility(source_url: str, source_city: str) -> float:
