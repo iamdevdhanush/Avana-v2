@@ -93,16 +93,7 @@ def _to_response(config: AIProviderConfig) -> AIConfigResponse:
 async def _test_provider_connection(provider: str, model: str, api_key: str) -> tuple[bool, float | None, str | None]:
     try:
         start = time.time()
-        if provider == "gemini":
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            test_model = genai.GenerativeModel(model)
-            resp = test_model.generate_content("Respond with only the word: OK")
-            latency = (time.time() - start) * 1000
-            if resp and resp.text and "OK" in resp.text:
-                return True, latency, None
-            return False, latency, "Unexpected response"
-        elif provider == "openrouter":
+        if provider == "openrouter":
             import httpx
             async with httpx.AsyncClient(timeout=15) as client:
                 resp = await client.post(
@@ -144,7 +135,7 @@ async def create_config(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    valid_providers = {"gemini", "openrouter", "auto"}
+    valid_providers = {"openrouter", "mock"}
     if body.provider not in valid_providers:
         raise HTTPException(status_code=400, detail=f"Invalid provider. Choose from: {valid_providers}")
     if not body.api_key.strip():

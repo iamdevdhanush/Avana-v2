@@ -18,7 +18,7 @@ const PIPELINE_META: Record<string, {
 }> = {
   intelligence: {
     label: 'News Intelligence',
-    description: 'Fetches RSS feeds, extracts incidents via Gemini AI, geocodes locations',
+    description: 'Fetches RSS feeds, extracts incidents via AI, geocodes locations',
     icon: Newspaper,
     runnableName: 'intelligence',
     color: '#A855F7',
@@ -118,8 +118,8 @@ function RunResultCard({ result, onDismiss }: { result: PipelineRunResult; onDis
       {isSkipped ? (
         <div className="text-xs text-[#F59E0B] mb-2">
           {result.reason?.includes('quota')
-            ? 'Gemini API quota exhausted. Skipped.'
-            : 'Gemini unavailable. Skipped.'}
+            ? 'AI provider quota exhausted. Skipped.'
+            : 'AI provider unavailable. Skipped.'}
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-3 mb-3">
@@ -212,13 +212,13 @@ export function IntelligencePipeline() {
         if (parsed?.reason === 'quota_exceeded') {
           const retryMin = parsed.retry_after_minutes ?? 15
           setPipelineError(
-            `Gemini API quota exhausted. Upgrade billing or replace API key. Retry in ~${retryMin} min.`
+            `AI provider quota exhausted. Upgrade billing or replace API key. Retry in ~${retryMin} min.`
           )
           return
         }
       } catch { /* not JSON, fall through */ }
       if (msg.toLowerCase().includes('quota')) {
-        setPipelineError('Gemini API quota exhausted. Upgrade billing or replace API key.')
+        setPipelineError('AI provider quota exhausted. Upgrade billing or replace API key.')
       } else {
         setPipelineError(msg)
       }

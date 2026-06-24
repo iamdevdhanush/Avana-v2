@@ -2,7 +2,7 @@ import logging
 from typing import List, Optional
 
 from app.services.ai.base import AIProvider
-from app.services.ai.gemini_provider import GeminiProvider, GeminiQuotaExceeded
+
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ def get_fallback_events() -> List[dict]:
 class FallbackProvider(AIProvider):
     """Chain multiple providers in order. Each fallback is tried on failure.
     
-    Fallback chain: OpenRouter -> Gemini -> Mock (implicit)
+    Fallback chain: OpenRouter -> Mock (implicit)
     All fallbacks are logged for observability.
     """
 
@@ -72,10 +72,6 @@ class FallbackProvider(AIProvider):
                     self._log_fallback(provider.name, provider.model_name, True)
                     return result
                 self._log_fallback(provider.name, provider.model_name, False, "Empty response")
-            except GeminiQuotaExceeded as e:
-                last_error = e
-                self._log_fallback(provider.name, provider.model_name, False, f"Quota exceeded: {e}")
-                logger.warning(f"[AI_FALLBACK] {provider.name} quota exceeded — trying next")
             except Exception as e:
                 last_error = e
                 self._log_fallback(provider.name, provider.model_name, False, str(e))
@@ -98,10 +94,6 @@ class FallbackProvider(AIProvider):
                 if result:
                     self._log_fallback(provider.name, provider.model_name, True)
                     return result
-            except GeminiQuotaExceeded as e:
-                last_error = e
-                self._log_fallback(provider.name, provider.model_name, False, f"Quota exceeded: {e}")
-                logger.warning(f"[AI_FALLBACK] {provider.name} quota exceeded — trying next")
             except Exception as e:
                 last_error = e
                 self._log_fallback(provider.name, provider.model_name, False, str(e))
@@ -120,14 +112,11 @@ def _build_provider_from_config(config: dict) -> AIProvider:
     model = config["model"]
     api_key = config["api_key"]
 
-    if provider_name == "gemini":
-        return GeminiProvider(api_key=api_key, model_name=model)
-    elif provider_name == "openrouter":
+    if provider_name == "openrouter":
         return OpenRouterProvider(api_key=api_key, model=model)
     elif provider_name == "auto":
-        gemini = GeminiProvider(api_key=api_key, model_name="gemini-2.0-flash")
         openrouter = OpenRouterProvider(api_key=api_key, model=model)
-        return FallbackProvider([openrouter, gemini])
+        return FallbackProvider([openrouter])
     raise ValueError(f"Unknown provider: {provider_name}")
 
 
@@ -177,7 +166,7 @@ def get_ai_provider() -> AIProvider:
     3. If no key configured → returns a provider that reports unavailable
        (agents fall through to mock mode naturally)
     
-    Fallback order: OpenRouter -> Gemini -> Mock
+    Fallback order: OpenRouter -> Mock
     """
     from app.utils.timing import Timer
 
@@ -198,23 +187,18 @@ def get_ai_provider() -> AIProvider:
 
         provider_name = (settings.AI_PROVIDER or "auto").strip().lower()
 
-        gemini = GeminiProvider()
         openrouter = OpenRouterProvider()
 
         logger.info(
             f"[AI_FACTORY] Env config: AI_PROVIDER={provider_name} "
             f"OPENROUTER_API_KEY={'set' if settings.OPENROUTER_API_KEY else 'unset'} "
-            f"GEMINI_API_KEY={'set' if settings.GEMINI_API_KEY else 'unset'} "
-            f"openrouter_available={openrouter.is_available()} "
-            f"gemini_available={gemini.is_available()}"
+            f"openrouter_available={openrouter.is_available()}"
         )
 
-        if provider_name == "gemini":
-            _provider_instance = gemini
-        elif provider_name == "openrouter":
+        if provider_name == "openrouter":
             _provider_instance = openrouter
         else:
-            _provider_instance = FallbackProvider([openrouter, gemini])
+            _provider_instance = FallbackProvider([openrouter])
 
         logger.info(
             f"[AI_FACTORY] Provider initialized: {_provider_instance.name} "

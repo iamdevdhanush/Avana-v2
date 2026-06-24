@@ -18,7 +18,6 @@ from app.schemas.admin import (
     UserManagementResponse,
 )
 from app.schemas.analytics import DashboardStats, DistrictStats, TypeStats, TrendPoint, AlertItem
-from app.services.ai.gemini_provider import GeminiQuotaExceeded
 # Agent orchestrator — primary execution path
 from app.pipeline.orchestrator import orchestrator as _orchestrator
 
@@ -503,25 +502,6 @@ async def run_pipeline(
             "result": result,
         }
 
-    except GeminiQuotaExceeded as exc:
-        await _log_admin_action(
-            request, db, admin, "run_pipeline_failed", "pipeline",
-            resolved_name,
-            {"pipeline": resolved_name, "status": "failed", "reason": "AI_QUOTA_EXCEEDED", "error": str(exc)},
-            "error",
-        )
-        await db.commit()
-        from app.services.ai.factory import get_ai_provider
-        retry_after = get_ai_provider().get_status().get("retry_after_seconds", 900)
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={
-                "reason": "quota_exceeded",
-                "error": "Gemini API quota exceeded",
-                "retry_after_seconds": retry_after,
-                "retry_after_minutes": round(retry_after / 60, 1),
-            },
-        )
     except Exception as exc:
         await _log_admin_action(
             request, db, admin, "run_pipeline_failed", "pipeline",
@@ -692,8 +672,7 @@ async def debug_data_integrity(
     result["ai_provider"] = ai.name
     result["ai_status"] = ai_status.get("status", "unknown")
     result["ai_error"] = ai_status.get("error")
-    result["gemini_key_configured"] = bool(settings.GEMINI_API_KEY and len(settings.GEMINI_API_KEY) >= 10)
-    result["gemini_key_length"] = len(settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else 0
+
 
     # Incident counts
     total_inc = await db.execute(text("SELECT COUNT(*) FROM incidents"))

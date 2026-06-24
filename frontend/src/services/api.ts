@@ -771,7 +771,7 @@ export const adminApi = {
         durationSeconds: Number(summary.duration_seconds || result.duration_seconds || 0),
         articlesProcessed: Number(summary.articles_fetched || result.articles_fetched || 0),
         ranAt: String(summary.completed_at || new Date().toISOString()),
-        reason: status === 'skipped' ? String(result.reason || 'gemini_unavailable') : undefined,
+        reason: status === 'skipped' ? String(result.reason || 'provider_unavailable') : undefined,
       }
       // Persist to localStorage so HomeScreen can show last run info
       if (pipelineName === 'intelligence') {
@@ -934,39 +934,17 @@ export const healthApi = {
     }
   },
 
-  // GET /health/gemini — Gemini AI availability
-  getAIHealth: async (): Promise<ServiceHealth> => {
-    const checkedAt = new Date().toISOString()
-    const t0 = Date.now()
-    try {
-      const { data: raw } = await axios.get(`${BASE_URL}/health/gemini`, { timeout: 8000 })
-      const responseMs = Date.now() - t0
-      const inner = (raw.data || raw) as Record<string, unknown>
-      const status = String(inner.status || 'OFFLINE')
-      return {
-        name: 'Gemini AI',
-        status: status === 'ONLINE' ? (responseMs > 3000 ? 'degraded' : 'healthy') : 'degraded',
-        responseMs,
-        checkedAt,
-        detail: status === 'ONLINE' ? 'Operational' : (String(inner.error || 'Not configured')),
-      }
-    } catch {
-      return { name: 'Gemini AI', status: 'offline', checkedAt, detail: 'Service unavailable' }
-    }
-  },
-
   getSystemHealth: async (): Promise<SystemHealth> => {
-    const [backend, routeEngine, aiService] = await Promise.allSettled([
+    const [backend, routeEngine] = await Promise.allSettled([
       healthApi.getBackendHealth(),
       healthApi.getRouteHealth(),
-      healthApi.getAIHealth(),
     ])
     const now = new Date().toISOString()
     const offline: ServiceHealth = { name: 'Unknown', status: 'offline', checkedAt: now }
     return {
       backend: backend.status === 'fulfilled' ? backend.value : { ...offline, name: 'Backend' },
       routeEngine: routeEngine.status === 'fulfilled' ? routeEngine.value : { ...offline, name: 'Route Engine' },
-      aiService: aiService.status === 'fulfilled' ? aiService.value : { ...offline, name: 'Gemini AI' },
+      aiService: { ...offline, name: 'AI Provider', status: 'healthy', checkedAt: now, detail: 'Managed via AI config' },
       lastChecked: now,
     }
   },

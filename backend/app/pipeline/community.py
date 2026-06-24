@@ -22,7 +22,6 @@ from app.pipeline.women_safety import (
     WOMEN_SAFETY_CATEGORIES, WOMEN_SAFETY_TO_INCIDENT_TYPE,
     get_women_safety_details, is_women_safety_category,
 )
-from app.services.gemini import gemini_service
 from geoalchemy2.elements import WKTElement
 
 logger = logging.getLogger(__name__)
@@ -78,58 +77,17 @@ async def process_pending_reports() -> dict:
             "created_at": r[8],
         })
 
-    # ── Step 2: AI Classification (optional, skipped if Gemini unavailable) ───
-    logger.info(f"[COMMUNITY_PIPELINE] Step 2: Classifying {len(reports)} reports via Gemini")
-    gemini_available = gemini_service.is_available()
-    if not gemini_available:
-        logger.warning("[COMMUNITY_PIPELINE] Gemini not available — using passthrough classification")
+    # ── Step 2: Passthrough classification (no AI available) ───
+    logger.info(f"[COMMUNITY_PIPELINE] Step 2: Passthrough classification for {len(reports)} reports")
 
     classified = []
     for report in reports:
-        if not gemini_available:
-            report["validated_type"] = report.get("incident_type", "OTHER")
-            report["validated_severity"] = report.get("severity", "MEDIUM")
-            report["confidence_adjustment"] = 0.0
-            report["classification_notes"] = "no_ai"
-            report["location_coherent"] = True
-            report["description_valid"] = True
-            classified.append(report)
-            continue
-
-        categories_list = sorted(WOMEN_SAFETY_CATEGORIES.keys())
-        prompt = (
-            "Validate this community WOMEN'S SAFETY report. Return JSON:\n"
-            '{"validated_type": "incident_type", "validated_severity": "LOW|MEDIUM|HIGH|CRITICAL", '
-            '"location_coherent": true/false, "description_valid": true/false, '
-            '"women_safety_category": "one of [' + ", ".join(categories_list) + '] or null", '
-            '"confidence_adjustment": -0.3 to 0.3, "notes": "..."}\n\n'
-            "If this is NOT a women's safety incident, set women_safety_category to null.\n\n"
-            f"Reported type: {report.get('incident_type', 'unknown')}\n"
-            f"Severity: {report.get('severity', 'unknown')}\n"
-            f"Location: ({report.get('latitude')}, {report.get('longitude')})\n"
-            f"Description: {report.get('description', '')[:500]}"
-        )
-        try:
-            logger.info(f"[COMMUNITY_PIPELINE] LLM call started for report {report['id']}")
-            parsed = gemini_service.generate_structured(
-                prompt,
-                "You are a community report validator. Return ONLY valid JSON.",
-            )
-            logger.info(f"[COMMUNITY_PIPELINE] LLM response received for report {report['id']}")
-            report["validated_type"] = parsed.get("validated_type", report.get("incident_type"))
-            report["validated_severity"] = parsed.get("validated_severity", report.get("severity"))
-            report["location_coherent"] = parsed.get("location_coherent", True)
-            report["description_valid"] = parsed.get("description_valid", True)
-            report["confidence_adjustment"] = float(parsed.get("confidence_adjustment", 0.0))
-            report["classification_notes"] = parsed.get("notes", "")
-        except Exception as e:
-            logger.warning(f"[COMMUNITY_PIPELINE] Gemini classification failed for report {report.get('id', '?')}: {e}")
-            report["validated_type"] = report.get("incident_type", "OTHER")
-            report["validated_severity"] = report.get("severity", "MEDIUM")
-            report["confidence_adjustment"] = 0.0
-            report["classification_notes"] = "classification_failed"
-            report["location_coherent"] = True
-            report["description_valid"] = True
+        report["validated_type"] = report.get("incident_type", "OTHER")
+        report["validated_severity"] = report.get("severity", "MEDIUM")
+        report["confidence_adjustment"] = 0.0
+        report["classification_notes"] = "no_ai"
+        report["location_coherent"] = True
+        report["description_valid"] = True
         classified.append(report)
 
     logger.info(f"[COMMUNITY_PIPELINE] Step 2 complete: {len(classified)} reports classified")
@@ -266,7 +224,7 @@ async def process_pending_reports() -> dict:
                         meta["women_safety_weight"] = None
                         logger.warning(f"[COMMUNITY_PIPELINE] Report {report['id']} has no women_safety_category — excluded from risk/heatmap")
 
-                    is_ai_classified = gemini_available
+                    is_ai_classified = False
                 incident = Incident(
                         incident_type=itype,
                         severity=severity,

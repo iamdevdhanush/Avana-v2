@@ -123,7 +123,6 @@ async def _ai_diagnostics():
             f"available={status.get('available')} "
             f"status={status.get('status', 'unknown')} "
             f"error={status.get('error')} "
-            f"gemini_key_present={bool(settings.GEMINI_API_KEY)} "
             f"openrouter_key_present={bool(settings.OPENROUTER_API_KEY)} "
             f"ai_provider={settings.AI_PROVIDER}"
         )
@@ -478,7 +477,7 @@ async def health_ai():
 @app.get("/api/v1/debug/ai")
 async def debug_ai(admin: User = Depends(require_admin)):
     from app.services.ai.factory import get_ai_provider
-    from app.services.ai.gemini_provider import GeminiQuotaExceeded, GeminiAuthError
+
 
     ai = get_ai_provider()
     ai_status = ai.get_status()
@@ -504,12 +503,6 @@ async def debug_ai(admin: User = Depends(require_admin)):
             return result
         result["error"] = f"Unexpected response: {resp}"
         return JSONResponse(status_code=502, content=result)
-    except GeminiQuotaExceeded as e:
-        result["error"] = f"QUOTA_EXCEEDED: {e}"
-        return JSONResponse(status_code=429, content=result)
-    except GeminiAuthError as e:
-        result["error"] = f"AUTH_FAILED: {e}"
-        return JSONResponse(status_code=401, content=result)
     except Exception as e:
         result["error"] = str(e)
         return JSONResponse(status_code=503, content=result)

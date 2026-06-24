@@ -1,6 +1,6 @@
 /**
  * SystemHealthBar — polls backend health endpoints every 60s.
- * Shows: Backend, Route Engine, Gemini AI status with color indicators.
+ * Shows: Backend, Route Engine, AI Provider status with color indicators.
  * Renders as a compact strip in the admin layout.
  */
 import * as React from 'react'

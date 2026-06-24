@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
 import type { AIConfigResponse, AIConfigStatus } from '@/types'
 
 const PROVIDER_OPTIONS = [
-  { value: 'gemini', label: 'Gemini' },
+  { value: 'mock', label: 'Mock' },
   { value: 'openrouter', label: 'OpenRouter' },
   { value: 'auto', label: 'Auto (Fallback)' },
 ]
@@ -26,7 +26,7 @@ export function AdminAIConfig() {
   const [status, setStatus] = React.useState<AIConfigStatus | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [showForm, setShowForm] = React.useState(false)
-  const [provider, setProvider] = React.useState('gemini')
+  const [provider, setProvider] = React.useState('openrouter')
   const [model, setModel] = React.useState('')
   const [apiKey, setApiKey] = React.useState('')
   const [showKey, setShowKey] = React.useState(false)
@@ -87,7 +87,7 @@ export function AdminAIConfig() {
       await adminApi.createAIConfig({ provider, model, api_key: apiKey })
       addToast({ title: 'Configuration saved', variant: 'success' })
       setShowForm(false)
-      setProvider('gemini')
+      setProvider('openrouter')
       setModel('')
       setApiKey('')
       setTestResult(null)
@@ -114,7 +114,7 @@ export function AdminAIConfig() {
 
   const getProviderBadge = (p: string) => {
     switch (p) {
-      case 'gemini': return <Badge variant="secondary" className="text-[10px]">Gemini</Badge>
+      case 'mock': return <Badge variant="secondary" className="text-[10px]">Mock</Badge>
       case 'openrouter': return <Badge variant="secondary" className="text-[10px]">OpenRouter</Badge>
       case 'auto': return <Badge variant="secondary" className="text-[10px]">Auto</Badge>
       default: return <Badge variant="secondary" className="text-[10px]">{p}</Badge>
@@ -204,7 +204,7 @@ export function AdminAIConfig() {
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-muted-foreground">Model</label>
                 <Input
-                  placeholder={provider === 'gemini' ? 'gemini-2.0-flash' : 'openai/gpt-4o-mini'}
+                  placeholder='openai/gpt-4o-mini'
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
                 />

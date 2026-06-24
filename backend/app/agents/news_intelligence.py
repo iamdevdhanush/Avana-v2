@@ -19,7 +19,6 @@ from typing import List
 from app.models.incident import IncidentType
 from app.pipeline.women_safety import WOMEN_SAFETY_CATEGORIES
 from app.services.ai.factory import get_ai_provider
-from app.services.ai.gemini_provider import GeminiQuotaExceeded
 from app.services.news_scraper import NewsScraper
 from app.utils.timing import Timer
 
@@ -154,8 +153,6 @@ class NewsIntelligenceAgent:
                             nonlocal ai_failure
                             ai_failure += 1
                         return result
-                    except GeminiQuotaExceeded:
-                        raise
                     except Exception as exc:
                         logger.warning(f"[NEWS_AGENT] Extraction failed for '{a.get('title', '')}': {exc}")
                         nonlocal ai_failure
@@ -163,13 +160,8 @@ class NewsIntelligenceAgent:
                         return []
             results = await asyncio.gather(*[_extract_one(a) for a in articles], return_exceptions=True)
             for r in results:
-                if isinstance(r, GeminiQuotaExceeded):
-                    logger.error("[NEWS_AGENT] Gemini quota exhausted mid-extraction -- stopping early")
-                    break
                 if isinstance(r, list):
                     incidents.extend(r)
-        except GeminiQuotaExceeded:
-            logger.error("[NEWS_AGENT] Gemini quota exhausted mid-extraction -- stopping early")
 
         logger.info(
             f"[NEWS_AGENT] Extraction: {ai_success} AI calls succeeded, "
@@ -333,7 +325,7 @@ class NewsIntelligenceAgent:
             return written
 
     async def _extract_incidents(self, article: dict) -> List[dict]:
-        with Timer("7+8+9. AI request (OpenRouter/Gemini) + JSON parsing"):
+        with Timer("7+8+9. AI request (OpenRouter) + JSON parsing"):
             text_content = article.get("full_text", "")
             if not text_content or len(text_content) < 50:
                 return []
