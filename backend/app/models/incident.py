@@ -52,6 +52,7 @@ class IncidentStatus(str, enum.Enum):
     DISMISSED = "DISMISSED"
     DUPLICATE = "DUPLICATE"
     SPAM = "SPAM"
+    RESOLVED = "RESOLVED"
 
 
 class Incident(Base):

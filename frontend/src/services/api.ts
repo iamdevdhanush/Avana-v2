@@ -701,9 +701,14 @@ export const adminApi = {
 
   moderateIncident: async (incidentId: string, action: string, notes?: string): Promise<Incident> => {
     try {
+      const statusMap: Record<string, string> = {
+        verify: 'VERIFIED',
+        dismiss: 'DISMISSED',
+        resolve: 'RESOLVED',
+      }
       const { data } = await api.put(`/admin/incidents/${incidentId}/moderate`, {
         incident_id: incidentId,
-        status: action,
+        status: statusMap[action] || action,
         moderation_notes: notes,
       })
       const d = (data.data || data) as Record<string, unknown>
