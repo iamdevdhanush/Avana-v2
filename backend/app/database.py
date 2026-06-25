@@ -1,4 +1,5 @@
 import logging
+import os
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import text
@@ -8,6 +9,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 _engine = None
+_alembic_head = None
 
 
 def get_engine():
@@ -51,19 +53,46 @@ async def get_db() -> AsyncSession:
         await session.close()
 
 
+def _get_alembic_head():
+    global _alembic_head
+    if _alembic_head is None:
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+        ini_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "alembic.ini")
+        cfg = Config(ini_path)
+        script = ScriptDirectory.from_config(cfg)
+        _alembic_head = script.get_current_head()
+    return _alembic_head
+
+
 async def init_db():
     engine = get_engine()
     async with engine.begin() as conn:
         # Check if alembic already manages this schema
-        result = await conn.execute(
+        table_result = await conn.execute(
             text("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'alembic_version')")
         )
-        if result.scalar():
-            result2 = await conn.execute(text("SELECT COUNT(*) FROM alembic_version"))
-            if result2.scalar() and result2.scalar() > 0:
+        if table_result.scalar():
+            count_result = await conn.execute(text("SELECT COUNT(*) FROM alembic_version"))
+            count = count_result.scalar() or 0
+            if count > 0:
                 logger.info("Database schema managed by alembic — skipping create_all")
                 return
+            logger.info("alembic_version present but empty — relying on migrations for schema")
+            return
+        logger.info("No alembic_version found — creating tables from metadata")
         await conn.run_sync(Base.metadata.create_all)
+        head = _get_alembic_head()
+        if head:
+            logger.info("Stamping alembic_version with head: %s", head)
+            await conn.execute(
+                text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)")
+            )
+            await conn.execute(text("DELETE FROM alembic_version"))
+            await conn.execute(
+                text("INSERT INTO alembic_version (version_num) VALUES (:head)"),
+                {"head": head},
+            )
     logger.info("Database tables verified/created")
 
 
