@@ -28,6 +28,34 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 # TASK 7: Pipeline execution lock — prevents concurrent runs
 _pipeline_locks: dict[str, asyncio.Lock] = {}
 
+
+async def _refresh_heatmap_after_moderation(incident_id: uuid.UUID) -> None:
+    """Fire-and-forget risk recalculation + heatmap refresh after incident verification.
+    Runs in background so the moderation API responds quickly.
+    """
+    try:
+        from app.pipeline.risk import recalculate_all_risk_scores
+        from app.pipeline.heatmap import compute_localized_bounds, generate_heatmap_for_bounds
+        from app.config import settings
+
+        risk_result = await recalculate_all_risk_scores()
+        logger.info(f"[MODERATE_HEATMAP] Risk recalc complete: {risk_result.get('updated', 0)} updated")
+
+        bounds_list = await compute_localized_bounds(buffer_degrees=0.05, max_cells_per=1000)
+        if bounds_list:
+            total_points = 0
+            for sw_lat, sw_lng, ne_lat, ne_lng in bounds_list:
+                heat = await generate_heatmap_for_bounds(sw_lat, sw_lng, ne_lat, ne_lng)
+                total_points += heat.get("points_generated", 0)
+            logger.info(f"[MODERATE_HEATMAP] Heatmap regenerated: {total_points} points")
+        else:
+            bounds = [float(x) for x in settings.KARNATAKA_BOUNDS.split(",")]
+            sw_lat, sw_lng, ne_lat, ne_lng = bounds[0], bounds[2], bounds[1], bounds[3]
+            heat = await generate_heatmap_for_bounds(sw_lat, sw_lng, ne_lat, ne_lng)
+            logger.info(f"[MODERATE_HEATMAP] Heatmap regenerated (state bounds): {heat.get('points_generated', 0)} points")
+    except Exception as exc:
+        logger.error(f"[MODERATE_HEATMAP] Failed after incident {incident_id}: {exc}")
+
 async def _acquire_pipeline_lock(pipeline_name: str) -> bool:
     """Try to acquire pipeline lock. Returns True if acquired, False if already running."""
     if pipeline_name not in _pipeline_locks:
@@ -262,6 +290,10 @@ async def moderate_incident(
         logger.warning(f"[MODERATE] Incident {id} not found — admin={admin.email}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found")
 
+    is_now_verified = body.status == "VERIFIED"
+    was_verified = incident.status.value == "VERIFIED"
+    status_changed = incident.status.value != body.status
+
     logger.info(
         f"[MODERATE] admin={admin.email} incident={id} "
         f"requested_status={body.status} current_status={incident.status.value}"
@@ -285,6 +317,10 @@ async def moderate_incident(
         "status": body.status, "notes": body.moderation_notes,
     })
     await db.flush()
+
+    # TASK: Trigger heatmap refresh when incident is first verified
+    if is_now_verified and not was_verified and status_changed:
+        asyncio.create_task(_refresh_heatmap_after_moderation(incident.id))
 
     logger.info(
         f"[MODERATE] SUCCESS: incident={id} "

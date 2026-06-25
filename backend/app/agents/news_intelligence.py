@@ -143,19 +143,24 @@ class NewsIntelligenceAgent:
         incidents: List[dict] = []
         ai_success = 0
         ai_failure = 0
+        _AI_TIMEOUT_SECONDS = 60
         sem = asyncio.Semaphore(5)
         async def _extract_one(a: dict) -> List[dict]:
             nonlocal ai_success, ai_failure
             async with sem:
                 try:
-                    result = await self._extract_incidents(a)
+                    result = await asyncio.wait_for(self._extract_incidents(a), timeout=_AI_TIMEOUT_SECONDS)
                     if result:
                         ai_success += 1
                     else:
                         ai_failure += 1
                     return result
+                except asyncio.TimeoutError:
+                    logger.warning(f"[NEWS_AGENT] Extraction timed out for '{a.get('title', '')[:60]}' (>={_AI_TIMEOUT_SECONDS}s)")
+                    ai_failure += 1
+                    return []
                 except Exception as exc:
-                    logger.warning(f"[NEWS_AGENT] Extraction failed for '{a.get('title', '')}': {exc}")
+                    logger.warning(f"[NEWS_AGENT] Extraction failed for '{a.get('title', '')[:60]}': {exc}")
                     ai_failure += 1
                     return []
         results = await asyncio.gather(*[_extract_one(a) for a in articles], return_exceptions=True)
@@ -168,15 +173,20 @@ class NewsIntelligenceAgent:
             f"{ai_failure} failed, {len(incidents)} incidents extracted"
         )
 
-        if not incidents and not self._ai.is_available():
-            logger.warning("[NEWS_AGENT] All AI providers failed — falling back to mock")
-            mock_result = await self._run_mock(start)
-            mock_result["metrics"]["fetch"] = fetch_metric
-            mock_result["metrics"]["extract"] = {
-                "status": "ok", "count": len(mock_result.get("incidents", [])),
-                "source": "mock_fallback", "ai_success": ai_success, "ai_failure": ai_failure,
-            }
-            return mock_result
+        if not incidents:
+            if not self._ai.is_available():
+                logger.warning("[NEWS_AGENT] All AI providers failed — falling back to mock")
+                mock_result = await self._run_mock(start)
+                mock_result["metrics"]["fetch"] = fetch_metric
+                mock_result["metrics"]["extract"] = {
+                    "status": "ok", "count": len(mock_result.get("incidents", [])),
+                    "source": "mock_fallback", "ai_success": ai_success, "ai_failure": ai_failure,
+                }
+                return mock_result
+            logger.warning(
+                f"[NEWS_AGENT] AI extracted 0 incidents from {len(articles)} articles "
+                f"(AI calls: {ai_success} success, {ai_failure} failed)"
+            )
 
         extract_metric = {
             "status": "ok", "count": len(incidents),
@@ -350,6 +360,7 @@ class NewsIntelligenceAgent:
         with Timer("7+8+9. AI request (OpenRouter) + JSON parsing"):
             text_content = article.get("full_text", "")
             if not text_content or len(text_content) < 50:
+                logger.warning(f"[NEWS_AGENT] Article content too short (<50 chars): '{article.get('title', '')[:60]}'")
                 return []
 
             source_language = article.get("language", "en")

@@ -265,9 +265,7 @@ class GeospatialIntelligenceAgent:
             factory = get_session_factory()
             async with factory() as session:
                 existing_result = await session.execute(
-                    select(Incident)
-                    .where(Incident.source == IncidentSource.NEWS)
-                    .limit(500)
+                    select(Incident).where(Incident.source == IncidentSource.NEWS)
                 )
                 existing = existing_result.scalars().all()
 
@@ -308,7 +306,26 @@ class GeospatialIntelligenceAgent:
                         logger.error(f"[GEO_AGENT] Failed to build incident: {exc}")
                         errors.append(str(exc))
 
-                await session.commit()
+                try:
+                    await session.commit()
+                except Exception as exc:
+                    logger.error(f"[GEO_AGENT] Bulk commit failed: {exc}. Attempting savepoint-per-incident.")
+                    await session.rollback()
+                    saved = 0
+                    for inc in incidents:
+                        lat = inc.get("latitude")
+                        lng = inc.get("longitude")
+                        if lat is None or lng is None:
+                            continue
+                        try:
+                            incident = self._build_incident(inc, lat, lng)
+                            async with session.begin_nested():
+                                session.add(incident)
+                            saved += 1
+                        except Exception as inner_exc:
+                            logger.warning(f"[GEO_AGENT] Savepoint-insert failed for '{inc.get('article_title', '')}': {inner_exc}")
+                            errors.append(str(inner_exc))
+                    await session.commit()
 
             return {"saved": saved, "skipped": skipped, "errors": errors, "total": len(incidents)}
 
