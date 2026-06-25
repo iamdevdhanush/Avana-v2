@@ -54,19 +54,11 @@ logger = logging.getLogger(__name__)
 
 _CITY_SOURCES = [
     {"city": "Bengaluru", "feeds": [
-        "https://timesofindia.indiatimes.com/rssfeeds/-2128838597.cms",
         "https://www.thehindu.com/news/cities/bangalore/feeder/default.rss",
         "https://www.deccanherald.com/feed",
     ]},
-    {"city": "Mysuru", "feeds": [
-        "https://timesofindia.indiatimes.com/rssfeeds/1078976505.cms",
-    ]},
-    {"city": "Mangaluru", "feeds": [
-        "https://timesofindia.indiatimes.com/rssfeeds/2452244.cms",
-    ]},
     {"city": "Karnataka", "feeds": [
         "https://www.thehindu.com/news/national/karnataka/feeder/default.rss",
-        "https://timesofindia.indiatimes.com/rssfeeds/2962392.cms",
         "https://www.deccanherald.com/feed",
     ]},
 ]
@@ -74,7 +66,7 @@ _CITY_SOURCES = [
 _INCIDENT_TYPES = [t.value for t in IncidentType]
 
 
-_MAX_ARTICLES = 50
+_MAX_ARTICLES = 100
 
 
 def _fetch_article_content_for_url(scraper: NewsScraper, article: dict) -> dict:
@@ -93,7 +85,21 @@ async def fetch_all_articles() -> List[dict]:
     articles = []
     scraper = NewsScraper()
     try:
-        all_raw = scraper.fetch_all()
+        from app.agents.news_intelligence import _KANNADA_SOURCES
+        kn_articles = []
+        for entry in _KANNADA_SOURCES:
+            for feed_url in entry["feeds"]:
+                try:
+                    kannada_articles = scraper.fetch_rss(feed_url)
+                    for ka in kannada_articles:
+                        ka["city"] = entry["city"]
+                        ka["language"] = entry.get("language", "kn")
+                    kn_articles.extend(kannada_articles)
+                except Exception as exc:
+                    logger.warning(f"[PIPELINE] Kannada feed fetch failed: {exc}")
+
+        en_raw = scraper.fetch_all()
+        all_raw = kn_articles + en_raw
         seen_urls = set()
         unique = []
         for a in all_raw:
@@ -101,7 +107,7 @@ async def fetch_all_articles() -> List[dict]:
             if url and url not in seen_urls:
                 seen_urls.add(url)
                 unique.append(a)
-        logger.info(f"Unique articles: {len(unique)}")
+        logger.info(f"Unique articles: {len(unique)} (Kannada first)")
         if len(unique) > _MAX_ARTICLES:
             unique = unique[:_MAX_ARTICLES]
             logger.info(f"Limited to {_MAX_ARTICLES} articles for this run")

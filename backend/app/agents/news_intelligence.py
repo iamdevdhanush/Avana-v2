@@ -25,30 +25,20 @@ from app.utils.timing import Timer
 logger = logging.getLogger(__name__)
 
 _INCIDENT_TYPES = [t.value for t in IncidentType]
-_MAX_ARTICLES = 50
+_MAX_ARTICLES = 100
 
 _CITY_SOURCES = [
     {
         "city": "Bengaluru",
         "feeds": [
-            "https://timesofindia.indiatimes.com/rssfeeds/-2128838597.cms",
             "https://www.thehindu.com/news/cities/bangalore/feeder/default.rss",
             "https://www.deccanherald.com/feed",
         ],
     },
     {
-        "city": "Mysuru",
-        "feeds": ["https://timesofindia.indiatimes.com/rssfeeds/1078976505.cms"],
-    },
-    {
-        "city": "Mangaluru",
-        "feeds": ["https://timesofindia.indiatimes.com/rssfeeds/2452244.cms"],
-    },
-    {
         "city": "Karnataka",
         "feeds": [
             "https://www.thehindu.com/news/national/karnataka/feeder/default.rss",
-            "https://timesofindia.indiatimes.com/rssfeeds/2962392.cms",
             "https://www.deccanherald.com/feed",
         ],
     },
@@ -232,8 +222,8 @@ class NewsIntelligenceAgent:
             scraper = NewsScraper()
             articles = []
             try:
-                all_raw = scraper.fetch_all()
-                # Also fetch Kannada-language sources
+                # Fetch Kannada-language crime sources FIRST for higher relevance
+                kn_articles = []
                 kn_healthy = 0
                 kn_failed = 0
                 for entry in _KANNADA_SOURCES:
@@ -243,7 +233,7 @@ class NewsIntelligenceAgent:
                             for ka in kannada_articles:
                                 ka["city"] = entry["city"]
                                 ka["language"] = entry.get("language", "kn")
-                            all_raw.extend(kannada_articles)
+                            kn_articles.extend(kannada_articles)
                             if kannada_articles:
                                 kn_healthy += 1
                             else:
@@ -253,6 +243,12 @@ class NewsIntelligenceAgent:
                             logger.warning(f"[NEWS_AGENT] Kannada feed fetch failed: {exc}")
                 if _KANNADA_SOURCES:
                     logger.info(f"[RSS SUMMARY] Kannada — Healthy feeds: {kn_healthy}, Failed feeds: {kn_failed}")
+
+                # Fetch English-language sources
+                en_raw = scraper.fetch_all()
+
+                # Kannada articles first (crime-specific feeds have highest relevance)
+                all_raw = kn_articles + en_raw
 
                 seen_urls: set = set()
                 unique = []
@@ -265,7 +261,7 @@ class NewsIntelligenceAgent:
                 if len(unique) > _MAX_ARTICLES:
                     unique = unique[:_MAX_ARTICLES]
 
-                logger.info(f"[NEWS_AGENT] {len(unique)} unique articles to scrape ({len(unique) - sum(1 for a in all_raw if a.get('link') in seen_urls)} new)")
+                logger.info(f"[NEWS_AGENT] {len(unique)} unique articles to scrape (Kannada first)")
 
                 # Log combined RSS health summary
                 all_health = list(scraper._last_health)
