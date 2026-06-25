@@ -25,7 +25,7 @@ from app.utils.timing import Timer
 logger = logging.getLogger(__name__)
 
 _INCIDENT_TYPES = [t.value for t in IncidentType]
-_MAX_ARTICLES = 100
+_MAX_ARTICLES = 50
 
 _CITY_SOURCES = [
     {
