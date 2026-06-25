@@ -889,6 +889,35 @@ async def admin_seed(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# RSS Feed Health Endpoint
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/rss/health")
+async def rss_feed_health(
+    admin: User = Depends(require_admin),
+):
+    """Check health of all configured RSS feeds. Returns per-feed status."""
+    from app.services.news_scraper import NewsScraper
+    scraper = NewsScraper()
+    try:
+        result = scraper.check_all_feeds_health()
+        # Also check Kannada sources
+        from app.agents.news_intelligence import _KANNADA_SOURCES
+        for entry in _KANNADA_SOURCES:
+            for feed_url in entry["feeds"]:
+                health = scraper.check_feed_health(feed_url, city=entry["city"], language=entry.get("language", "kn"))
+                d = health.to_dict()
+                if health.status_code == 200 and not health.error:
+                    result["healthy"].append(d)
+                else:
+                    result["failed"].append(d)
+                result["feeds"].append(d)
+        return result
+    finally:
+        scraper.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Intelligence Observability Endpoint
 # ─────────────────────────────────────────────────────────────────────────────
 

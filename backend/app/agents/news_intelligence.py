@@ -55,7 +55,6 @@ _CITY_SOURCES = [
 ]
 
 # Kannada-language news sources
-# Kannada-language news sources
 # Verified working as of 2026-06-25:
 #   tv9kannada.com/rss         → 200, 60 entries
 #   asianetnews.com/rss/crime  → 200, 20 entries (crime-specific)
@@ -235,6 +234,8 @@ class NewsIntelligenceAgent:
             try:
                 all_raw = scraper.fetch_all()
                 # Also fetch Kannada-language sources
+                kn_healthy = 0
+                kn_failed = 0
                 for entry in _KANNADA_SOURCES:
                     for feed_url in entry["feeds"]:
                         try:
@@ -243,8 +244,15 @@ class NewsIntelligenceAgent:
                                 ka["city"] = entry["city"]
                                 ka["language"] = entry.get("language", "kn")
                             all_raw.extend(kannada_articles)
+                            if kannada_articles:
+                                kn_healthy += 1
+                            else:
+                                kn_failed += 1
                         except Exception as exc:
+                            kn_failed += 1
                             logger.warning(f"[NEWS_AGENT] Kannada feed fetch failed: {exc}")
+                if _KANNADA_SOURCES:
+                    logger.info(f"[RSS SUMMARY] Kannada — Healthy feeds: {kn_healthy}, Failed feeds: {kn_failed}")
 
                 seen_urls: set = set()
                 unique = []
@@ -258,6 +266,13 @@ class NewsIntelligenceAgent:
                     unique = unique[:_MAX_ARTICLES]
 
                 logger.info(f"[NEWS_AGENT] {len(unique)} unique articles to scrape ({len(unique) - sum(1 for a in all_raw if a.get('link') in seen_urls)} new)")
+
+                # Log combined RSS health summary
+                all_health = list(scraper._last_health)
+                if all_health:
+                    h_healthy = sum(1 for h in all_health if not h.error and h.status_code == 200)
+                    h_failed = sum(1 for h in all_health if h.error or h.status_code != 200)
+                    logger.info(f"[RSS SUMMARY] Total — Healthy feeds: {h_healthy}, Failed feeds: {h_failed}, Articles: {len(all_raw)}")
 
                 loop = asyncio.get_event_loop()
                 articles = await loop.run_in_executor(

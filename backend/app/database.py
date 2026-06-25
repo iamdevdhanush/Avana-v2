@@ -54,6 +54,15 @@ async def get_db() -> AsyncSession:
 async def init_db():
     engine = get_engine()
     async with engine.begin() as conn:
+        # Check if alembic already manages this schema
+        result = await conn.execute(
+            text("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'alembic_version')")
+        )
+        if result.scalar():
+            result2 = await conn.execute(text("SELECT COUNT(*) FROM alembic_version"))
+            if result2.scalar() and result2.scalar() > 0:
+                logger.info("Database schema managed by alembic — skipping create_all")
+                return
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables verified/created")
 
