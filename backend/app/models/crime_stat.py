@@ -16,7 +16,7 @@ class CrimeStat(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    district: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    district: Mapped[str] = mapped_column(String(100), nullable=False)
     city: Mapped[str] = mapped_column(String(100), nullable=True)
     crime_type: Mapped[str] = mapped_column(String(200), nullable=False)
     crime_category: Mapped[str] = mapped_column(String(100), nullable=True)

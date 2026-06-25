@@ -24,7 +24,7 @@ class SOSEvent(Base):
     longitude: Mapped[float] = mapped_column(Float, nullable=False)
     geom = mapped_column(Geometry("POINT", srid=4326), nullable=True)
     message: Mapped[str] = mapped_column(Text, nullable=True)
-    status: Mapped[SOSStatus] = mapped_column(SAEnum(SOSStatus), default=SOSStatus.TRIGGERED)
+    status: Mapped[SOSStatus] = mapped_column(SAEnum(SOSStatus, create_type=False), default=SOSStatus.TRIGGERED)
     emergency_type: Mapped[str] = mapped_column(String(50), nullable=True)
     notified_contacts: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=dict)
     responder_assigned: Mapped[str] = mapped_column(String(255), nullable=True)

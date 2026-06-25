@@ -30,7 +30,7 @@ class CommunityPost(Base):
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     verified_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
-    status: Mapped[PostStatus] = mapped_column(SAEnum(PostStatus), default=PostStatus.ACTIVE)
+    status: Mapped[PostStatus] = mapped_column(SAEnum(PostStatus, create_type=False), default=PostStatus.ACTIVE)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

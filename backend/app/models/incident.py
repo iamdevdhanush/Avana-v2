@@ -70,7 +70,7 @@ class Incident(Base):
         SAEnum(IncidentType, name="incidenttype", create_type=False), nullable=False
     )
     severity: Mapped[IncidentSeverity] = mapped_column(
-        SAEnum(IncidentSeverity, name="incidentseverity", create_type=False), nullable=False, index=True
+        SAEnum(IncidentSeverity, name="incidentseverity", create_type=False), nullable=False
     )
     source: Mapped[IncidentSource] = mapped_column(
         SAEnum(IncidentSource, name="incidentsource", create_type=False), nullable=False
@@ -86,7 +86,7 @@ class Incident(Base):
     description: Mapped[str] = mapped_column(Text, nullable=True)
     title: Mapped[str] = mapped_column(String(500), nullable=True)
     address: Mapped[str] = mapped_column(String(500), nullable=True)
-    district: Mapped[str] = mapped_column(String(100), nullable=True, index=True)
+    district: Mapped[str] = mapped_column(String(100), nullable=True)
     city: Mapped[str] = mapped_column(String(100), nullable=True)
     taluk: Mapped[str] = mapped_column(String(100), nullable=True)
     incident_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -95,7 +95,7 @@ class Incident(Base):
     source_id: Mapped[str] = mapped_column(String(255), nullable=True)
     meta_data: Mapped[dict] = mapped_column("metadata", JSON().with_variant(JSONB, "postgresql"), default=dict)
     ai_classified: Mapped[bool] = mapped_column(Boolean, default=False)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     moderated_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
     is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False)
     duplicate_of: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)

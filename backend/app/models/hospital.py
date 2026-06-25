@@ -28,7 +28,7 @@ class Hospital(Base):
     district: Mapped[str] = mapped_column(String(100), nullable=True)
     city: Mapped[str] = mapped_column(String(100), nullable=True)
     taluk: Mapped[str] = mapped_column(String(100), nullable=True)
-    hospital_type: Mapped[HospitalType] = mapped_column(SAEnum(HospitalType), nullable=False)
+    hospital_type: Mapped[HospitalType] = mapped_column(SAEnum(HospitalType, create_type=False), nullable=False)
     emergency_services: Mapped[bool] = mapped_column(Boolean, default=False)
     ambulance_available: Mapped[bool] = mapped_column(Boolean, default=False)
     beds_available: Mapped[int] = mapped_column(Integer, default=0)

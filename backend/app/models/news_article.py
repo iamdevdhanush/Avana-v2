@@ -17,7 +17,6 @@ class SourceType(str, enum.Enum):
 class NewsArticle(Base):
     __tablename__ = "news_articles"
     __table_args__ = (
-        Index("idx_news_articles_url", "url"),
         Index("idx_news_articles_is_processed", "is_processed"),
         Index("idx_news_articles_published_at", "published_at"),
     )
@@ -26,7 +25,7 @@ class NewsArticle(Base):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     url: Mapped[str] = mapped_column(String(2048), unique=True, nullable=False)
     source: Mapped[str] = mapped_column(String(100), nullable=True)
-    source_type: Mapped[SourceType] = mapped_column(SAEnum(SourceType), nullable=False)
+    source_type: Mapped[SourceType] = mapped_column(SAEnum(SourceType, create_type=False), nullable=False)
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     content: Mapped[str] = mapped_column(Text, nullable=True)

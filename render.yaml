@@ -17,6 +17,12 @@ services:
         value: false
       - key: DATABASE_URL
         sync: false
+      - key: DATABASE_SSL_MODE
+        value: require
+      - key: DATABASE_POOL_SIZE
+        value: "10"
+      - key: DATABASE_MAX_OVERFLOW
+        value: "5"
       - key: SECRET_KEY
         generateValue: true
       - key: JWT_ALGORITHM
@@ -25,8 +31,12 @@ services:
         value: "30"
       - key: REFRESH_TOKEN_EXPIRE_DAYS
         value: "7"
-      - key: GEMINI_API_KEY
+      - key: AI_PROVIDER
+        value: openrouter
+      - key: OPENROUTER_API_KEY
         sync: false
+      - key: OPENROUTER_MODEL
+        value: openai/gpt-4o-mini
       - key: RATE_LIMIT_MAX
         value: "100"
       - key: RATE_LIMIT_WINDOW

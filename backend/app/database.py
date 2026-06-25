@@ -18,13 +18,17 @@ def get_engine():
         url = settings.build_database_url()
         if not url:
             raise RuntimeError("Database not configured. Set DATABASE_URL or POSTGRES_HOST/USER/PASSWORD.")
+        connect_args = {}
+        if settings.DATABASE_SSL_MODE == "require":
+            connect_args["ssl"] = "require"
         _engine = create_async_engine(
             url,
             echo=settings.DEBUG,
-            pool_size=15,
-            max_overflow=5,
+            pool_size=settings.DATABASE_POOL_SIZE,
+            max_overflow=settings.DATABASE_MAX_OVERFLOW,
             pool_pre_ping=True,
-            pool_recycle=3600,
+            pool_recycle=settings.DATABASE_POOL_RECYCLE,
+            connect_args=connect_args,
         )
     return _engine
 
@@ -113,6 +117,12 @@ async def validate_schema():
     """
     engine = get_engine()
     async with engine.connect() as conn:
+        result = await conn.execute(
+            text("SELECT 1 FROM pg_extension WHERE extname = 'postgis'")
+        )
+        if not result.scalar():
+            logger.warning("PostGIS extension is not installed. Run: CREATE EXTENSION postgis;")
+
         tables = await conn.execute(
             text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
         )

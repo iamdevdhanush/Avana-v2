@@ -13,6 +13,11 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = ""
 
+    DATABASE_POOL_SIZE: int = 10
+    DATABASE_MAX_OVERFLOW: int = 5
+    DATABASE_POOL_RECYCLE: int = 1800
+    DATABASE_SSL_MODE: str = "prefer"
+
     SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
@@ -39,15 +44,21 @@ class Settings(BaseSettings):
 
     def build_database_url(self) -> str:
         if self.DATABASE_URL:
-            return self.DATABASE_URL
-        host = os.environ.get("POSTGRES_HOST", "")
-        port = os.environ.get("POSTGRES_PORT", "5432")
-        user = os.environ.get("POSTGRES_USER", "")
-        password = os.environ.get("POSTGRES_PASSWORD", "")
-        db = os.environ.get("POSTGRES_DB", "avana_v2")
-        if host and user and password:
-            return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{db}"
-        return ""
+            url = self.DATABASE_URL
+        else:
+            host = os.environ.get("POSTGRES_HOST", "")
+            port = os.environ.get("POSTGRES_PORT", "5432")
+            user = os.environ.get("POSTGRES_USER", "")
+            password = os.environ.get("POSTGRES_PASSWORD", "")
+            db = os.environ.get("POSTGRES_DB", "avana_v2")
+            if not (host and user and password):
+                return ""
+            url = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{db}"
+
+        if self.DATABASE_SSL_MODE != "prefer" and "sslmode" not in url:
+            separator = "&" if "?" in url else "?"
+            url = f"{url}{separator}sslmode={self.DATABASE_SSL_MODE}"
+        return url
 
     def validate_required(self):
         errors = []
