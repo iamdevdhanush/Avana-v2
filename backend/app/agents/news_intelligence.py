@@ -55,14 +55,25 @@ _CITY_SOURCES = [
 ]
 
 # Kannada-language news sources
+# Kannada-language news sources
+# Verified working as of 2026-06-25:
+#   tv9kannada.com/rss         → 200, 60 entries
+#   asianetnews.com/rss/crime  → 200, 20 entries (crime-specific)
+#   asianetnews.com/rss        → 200, 100 entries
+#   publictv.in/rss            → 200, 10 entries
+# Dead feeds replaced:
+#   kannada.oneindia.com/rss/news-karnataka-fb.xml    → 403
+#   kannada.oneindia.com/rss/news-karnataka.xml       → 403
+#   vijaykarnataka.com/rssfeeds/29716808.cms          → 410
+#   kannada.news18.com/rss/uttara-karnataka.xml       → 403
 _KANNADA_SOURCES = [
     {
         "city": "Karnataka",
         "feeds": [
-            "https://kannada.oneindia.com/rss/news-karnataka-fb.xml",
-            "https://kannada.oneindia.com/rss/news-karnataka.xml",
-            "https://vijaykarnataka.com/rssfeeds/29716808.cms",
-            "https://kannada.news18.com/rss/uttara-karnataka.xml",
+            "https://tv9kannada.com/rss",
+            "https://kannada.asianetnews.com/rss/crime",
+            "https://kannada.asianetnews.com/rss",
+            "https://publictv.in/rss",
         ],
         "language": "kn",
     },
