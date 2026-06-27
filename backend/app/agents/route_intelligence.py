@@ -129,7 +129,7 @@ class RouteIntelligenceAgent:
                             ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
                             :radius
                         )
-                          AND status::text IN ('verified', 'VERIFIED')
+                          AND status::text IN ('verified', 'VERIFIED', 'pending', 'PENDING')
                           AND metadata->>'women_safety_category' IS NOT NULL
                         ORDER BY created_at DESC
                         LIMIT 5

@@ -316,7 +316,7 @@ async def moderate_incident(
     await _log_admin_action(request, db, admin, "moderate_incident", "incident", str(incident.id), {
         "status": body.status, "notes": body.moderation_notes,
     })
-    await db.flush()
+    await db.commit()
 
     # TASK: Trigger heatmap refresh when incident is first verified
     if is_now_verified and not was_verified and status_changed:

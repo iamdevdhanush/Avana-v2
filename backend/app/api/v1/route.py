@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
@@ -73,33 +74,34 @@ async def _fetch_route(
     raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Route service unavailable")
 
 
-async def _fetch_nearby_incidents(lat: float, lng: float, radius_m: int = 500) -> list:
+async def _fetch_nearby_incidents(lat: float, lng: float, radius_m: int = 500, db: AsyncSession = None) -> list:
     """Fetch nearby incidents with human-readable details for route explanations."""
     try:
-        async with get_db() as db:
-            result = await db.execute(
-                text("""
-                    SELECT incident_type, severity,
-                           metadata->>'women_safety_category' as ws_cat,
-                           title, created_at,
-                           ST_Distance(
-                               geom::geography,
-                               ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography
-                           ) as dist
-                    FROM incidents
-                    WHERE ST_DWithin(
-                        geom::geography,
-                        ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
-                        :radius
-                    )
-                      AND status::text IN ('verified', 'VERIFIED')
-                      AND metadata->>'women_safety_category' IS NOT NULL
-                    ORDER BY dist ASC
-                    LIMIT 10
-                """),
-                {"lat": lat, "lng": lng, "radius": radius_m},
-            )
-            return [{"type": r[0], "severity": r[1], "category": r[2], "title": r[3], "created_at": r[4], "distance_m": float(r[5])} for r in result.fetchall()]
+        if db is None:
+            async with get_db() as session:
+                return await _fetch_nearby_incidents(lat, lng, radius_m, session)
+        result = await db.execute(
+            text("""
+                SELECT incident_type, severity,
+                       metadata->>'women_safety_category' as ws_cat,
+                       title, created_at,
+                       ST_Distance(
+                           geom::geography,
+                           ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography
+                       ) as dist
+                FROM incidents
+                WHERE ST_DWithin(
+                    geom::geography,
+                    ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
+                    :radius
+                )
+                  AND status::text IN ('verified', 'VERIFIED', 'pending', 'PENDING')
+                ORDER BY dist ASC
+                LIMIT 10
+            """),
+            {"lat": lat, "lng": lng, "radius": radius_m},
+        )
+        return [{"type": r[0], "severity": r[1], "category": r[2], "title": r[3], "created_at": r[4], "distance_m": float(r[5])} for r in result.fetchall()]
     except Exception as e:
         logger.warning(f"[ROUTE] Nearby incidents fetch failed: {e}")
         return []

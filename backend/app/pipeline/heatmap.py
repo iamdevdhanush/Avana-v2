@@ -56,7 +56,7 @@ async def compute_localized_bounds(buffer_degrees: float = 0.05, max_cells_per: 
                 FROM incidents
                 WHERE latitude IS NOT NULL
                   AND metadata->>'women_safety_category' IS NOT NULL
-                  AND status::text IN ('verified', 'VERIFIED')
+                  AND status::text IN ('verified', 'VERIFIED', 'pending', 'PENDING')
                   AND created_at >= NOW() - INTERVAL '7 days'
                 GROUP BY district
             """)
@@ -119,7 +119,7 @@ async def _score_points_batch(points: List[Tuple[float, float]]) -> List[dict]:
                         {radius_m}
                     )
                     AND inc.metadata->>'women_safety_category' IS NOT NULL
-                    AND inc.status::text IN ('verified', 'VERIFIED')
+                    AND inc.status::text IN ('verified', 'VERIFIED', 'pending', 'PENDING')
                 GROUP BY pt.lat, pt.lng
             """)
         )
@@ -147,7 +147,7 @@ async def _score_points_batch(points: List[Tuple[float, float]]) -> List[dict]:
                     )
                     AND inc.created_at >= NOW() - INTERVAL '30 days'
                     AND inc.metadata->>'women_safety_category' IS NOT NULL
-                    AND inc.status::text IN ('verified', 'VERIFIED')
+                    AND inc.status::text IN ('verified', 'VERIFIED', 'pending', 'PENDING')
                 GROUP BY pt.lat, pt.lng
             """)
         )
@@ -195,7 +195,7 @@ async def _score_points_batch(points: List[Tuple[float, float]]) -> List[dict]:
                         ST_SetSRID(ST_MakePoint(pt.lng, pt.lat), 4326)::geography,
                         {radius_m}
                     )
-                    AND inc.status::text IN ('verified', 'VERIFIED')
+                    AND inc.status::text IN ('verified', 'VERIFIED', 'pending', 'PENDING')
                 GROUP BY pt.lat, pt.lng
             """)
         )

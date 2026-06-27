@@ -371,7 +371,7 @@ class GeospatialIntelligenceAgent:
         # Compute overall intelligence confidence
         geocoding_label = inc.get("geocoding_confidence", "MEDIUM")
         geocoding_score = inc.get("geocoding_confidence_score", 0.7)
-        source_str = inc.get("source", "NEWS") if not inc.get("source") else "NEWS"
+        source_str = "NEWS" if not inc.get("source") else inc["source"]
 
         overall_confidence = compute_overall_confidence(
             ai_confidence=confidence,

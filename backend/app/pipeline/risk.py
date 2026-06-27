@@ -131,7 +131,7 @@ async def score_location(lat: float, lng: float, district: Optional[str] = None)
                     ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
                     :radius
                 )
-                  AND status::text IN ('verified', 'VERIFIED')
+                  AND status::text IN ('verified', 'VERIFIED', 'pending', 'PENDING')
             """),
             {"lng": lng, "lat": lat, "radius": HISTORICAL_RADIUS_METERS},
         )
@@ -161,7 +161,7 @@ async def score_location(lat: float, lng: float, district: Optional[str] = None)
                     :radius
                 )
                   AND metadata->>'women_safety_category' IS NOT NULL
-                  AND status::text IN ('verified', 'VERIFIED')
+                  AND status::text IN ('verified', 'VERIFIED', 'pending', 'PENDING')
             """),
             {"lng": lng, "lat": lat, "radius": HISTORICAL_RADIUS_METERS},
         )
@@ -191,7 +191,7 @@ async def score_location(lat: float, lng: float, district: Optional[str] = None)
                 )
                   AND created_at >= NOW() - INTERVAL '30 days'
                   AND metadata->>'women_safety_category' IS NOT NULL
-                  AND status::text IN ('verified', 'VERIFIED')
+                  AND status::text IN ('verified', 'VERIFIED', 'pending', 'PENDING')
             """),
             {"lng": lng, "lat": lat, "radius": RECENT_RADIUS_METERS},
         )
@@ -335,7 +335,7 @@ async def recalculate_all_risk_scores() -> dict:
                 FROM incidents
                 WHERE latitude IS NOT NULL
                   AND longitude IS NOT NULL
-                  AND status::text IN ('verified', 'VERIFIED')
+                  AND status::text IN ('verified', 'VERIFIED', 'pending', 'PENDING')
             """)
         )
         points = result.fetchall()
