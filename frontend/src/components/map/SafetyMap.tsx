@@ -15,13 +15,14 @@ import type { RouteOption, HeatmapPoint } from '@/types'
 const userIcon = L.divIcon({
   className: '',
   html: `<div style="
-    width: 8px; height: 8px;
-    background: #3b82f6;
+    width: 12px; height: 12px;
+    background: #66BB6A;
     border-radius: 50%;
-    box-shadow: 0 0 0 2px #3b82f640, 0 0 8px #3b82f680;
+    border: 2px solid #07110A;
+    box-shadow: 0 0 0 4px rgba(102, 187, 106, 0.3);
   "></div>`,
-  iconSize: [8, 8],
-  iconAnchor: [4, 4],
+  iconSize: [12, 12],
+  iconAnchor: [6, 6],
 })
 
 function MapBoundsUpdater() {
@@ -75,11 +76,11 @@ const StaticMarker = memo(function StaticMarker({ position, icon }: { position: 
 })
 
 function getRouteColor(score: number, category?: string): string {
-  if (category?.toLowerCase() === 'unknown') return '#6B7280'
-  if (score >= 0.8) return '#00E676'
-  if (score >= 0.6) return '#FFD600'
-  if (score >= 0.4) return '#FF8C00'
-  return '#FF1744'
+  if (category?.toLowerCase() === 'unknown') return '#8A948C'
+  if (score >= 0.8) return '#66BB6A'
+  if (score >= 0.6) return '#F5B942'
+  if (score >= 0.4) return '#F97316'
+  return '#EF4444'
 }
 
 interface SafetyMapProps {
@@ -98,7 +99,7 @@ function AutoCenter({ position }: { position: { lat: number; lng: number } | nul
   useEffect(() => {
     if (position && !doneRef.current) {
       doneRef.current = true
-      map.flyTo([position.lat, position.lng], 13, { duration: 1.5 })
+      map.flyTo([position.lat, position.lng], 13, { duration: 1.2 })
     }
   }, [position, map])
 
@@ -126,7 +127,7 @@ export const SafetyMap = memo(function SafetyMap({
       zoom={zoom}
       className="h-full w-full"
       zoomControl={false}
-      style={{ background: '#0a0a10' }}
+      style={{ background: '#07110A' }}
     >
       <TileLayer
         attribution='&copy; <a href="https://carto.com/">CARTO</a>'
@@ -157,8 +158,8 @@ export const SafetyMap = memo(function SafetyMap({
           positions={selectedRoute.geometry}
           pathOptions={{
             color: getRouteColor(selectedRoute.safetyScore),
-            weight: 3,
-            opacity: 0.7,
+            weight: 4,
+            opacity: 0.85,
           }}
         />
       )}

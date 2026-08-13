@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Navigation, MapPin } from 'lucide-react'
 import { SafetyMap } from '@/components/map/SafetyMap'
 import { MapControls } from '@/components/map/MapControls'
 import { RiskIntelligencePanel } from '@/components/map/RiskIntelligencePanel'
@@ -56,9 +56,9 @@ export function MapScreen() {
 
   return (
     <div
-      className="relative w-full"
+      className="relative w-full bg-[#07110A]"
       style={{
-        height: 'calc(100vh - 48px - 64px - env(safe-area-inset-bottom, 0px))',
+        height: 'calc(100vh - 52px - 64px - env(safe-area-inset-bottom, 0px))',
       }}
     >
       <SafetyMap
@@ -74,19 +74,18 @@ export function MapScreen() {
         <MapControls />
       </SafetyMap>
 
-      {/* Heatmap freshness + district summaries (bottom left) */}
-      <div className="absolute bottom-24 left-3 z-[1000] space-y-2 pointer-events-none">
+      {/* Heatmap freshness & District risk pill (bottom left) */}
+      <div className="absolute bottom-20 left-3 z-[1000] space-y-2 pointer-events-none">
         <div
-          className="px-2.5 py-1.5 rounded-xl pointer-events-auto"
+          className="px-2.5 py-1.5 rounded-xl pointer-events-auto avana-surface"
           style={{
-            background: 'rgba(9,9,11,0.88)',
-            border: '1px solid rgba(255,255,255,0.06)',
+            background: 'rgba(7,17,10,0.92)',
             backdropFilter: 'blur(12px)',
           }}
         >
           <DataFreshness
             timestamp={generatedAt}
-            label="Heatmap"
+            label="Risk Intelligence Layer"
             warnAfterHours={24}
             compact
           />
@@ -94,26 +93,24 @@ export function MapScreen() {
 
         {districtSummaries.length > 0 && (
           <div
-            className="px-2.5 py-2 rounded-xl space-y-1.5 pointer-events-auto"
+            className="px-3 py-2 rounded-xl space-y-1 pointer-events-auto avana-surface"
             style={{
-              background: 'rgba(9,9,11,0.88)',
-              border: '1px solid rgba(255,255,255,0.06)',
+              background: 'rgba(7,17,10,0.92)',
               backdropFilter: 'blur(12px)',
-              maxWidth: '180px',
+              maxWidth: '190px',
             }}
           >
-            <p className="text-[10px] font-semibold text-[#6B7280] uppercase tracking-wide">District Risk</p>
+            <p className="text-[10px] font-bold text-[#8A948C] uppercase tracking-wider">Regional Activity</p>
             {districtSummaries.slice(0, 3).map((s) => (
               <div key={s.district} className="flex items-center justify-between gap-2">
-                <span className="text-[10px] text-[#9CA3AF] truncate">{s.district.split(' ')[0]}</span>
+                <span className="text-[10px] text-[#9BAF9F] truncate">{s.district.split(' ')[0]}</span>
                 <span
-                  className="text-[10px] font-semibold shrink-0"
+                  className="text-[10px] font-bold shrink-0"
                   style={{
-                    color: s.trend === 'worsening' ? '#FF1744' : s.trend === 'improving' ? '#00E676' : '#FFD600',
+                    color: s.trend === 'worsening' ? '#EF4444' : s.trend === 'improving' ? '#66BB6A' : '#F5B942',
                   }}
                 >
-                  {s.trend === 'worsening' ? '\u2191' : s.trend === 'improving' ? '\u2193' : '\u2192'}
-                  {' '}{s.trend}
+                  {s.trend === 'worsening' ? '↑ High' : s.trend === 'improving' ? '↓ Low' : '→ Stable'}
                 </span>
               </div>
             ))}
@@ -121,30 +118,29 @@ export function MapScreen() {
         )}
       </div>
 
-      {/* Loading indicator */}
+      {/* Loading bar */}
       {heatmapLoading && (
-        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none">
           <div
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs pointer-events-auto"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs pointer-events-auto avana-surface shadow-xl"
             style={{
-              background: 'rgba(9,9,11,0.85)',
-              border: '1px solid rgba(255,255,255,0.06)',
+              background: 'rgba(7,17,10,0.92)',
               backdropFilter: 'blur(12px)',
-              color: '#9CA3AF',
+              color: '#9BAF9F',
             }}
           >
-            <Loader2 className="h-3 w-3 animate-spin" style={{ color: '#FF1744' }} />
-            Loading heatmap...
+            <Loader2 className="h-3 w-3 animate-spin text-[#66BB6A]" />
+            Syncing area intelligence...
           </div>
         </div>
       )}
 
-      {/* Route Panel */}
+      {/* Route Panel Overlay */}
       {showRoutePanel && (
         <RoutePanel onClose={handleCloseRoute} />
       )}
 
-      {/* Risk Intelligence Panel (bottom sheet) */}
+      {/* Risk Intelligence Panel (Bottom Sheet) */}
       {selectedLocation && !showRoutePanel && (
         <RiskIntelligencePanel
           onGetSafeRoute={handleGetSafeRoute}
@@ -152,20 +148,14 @@ export function MapScreen() {
         />
       )}
 
-      {/* Find Safe Route FAB */}
+      {/* Safe Route Trigger FAB */}
       {!showRoutePanel && !selectedLocation && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none">
           <button
             onClick={handleOpenRoute}
-            className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-bold text-white shadow-xl transition-all hover:scale-105 active:scale-95 pointer-events-auto"
-            style={{
-              background: 'linear-gradient(135deg, #FF1744 0%, #D50000 100%)',
-              boxShadow: '0 8px 32px rgba(255,23,68,0.4)',
-            }}
+            className="flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold text-[#07110A] bg-[#66BB6A] hover:bg-[#81C784] shadow-xl transition-all hover:scale-105 active:scale-95 pointer-events-auto border border-[#66BB6A]"
           >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
-            </svg>
+            <Navigation className="h-4 w-4" />
             Find Safe Route
           </button>
         </div>

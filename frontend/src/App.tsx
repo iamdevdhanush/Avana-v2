@@ -68,13 +68,12 @@ export default function App() {
   if (initError) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-6"
-        style={{ background: '#09090B', color: '#F9FAFB' }}
+        style={{ background: '#07110A', color: '#F1F8F2' }}
       >
-        <p className="text-sm text-center text-muted-foreground mb-4">Avana is loading...</p>
+        <p className="text-sm text-center text-[#9BAF9F] mb-4">Avana is loading...</p>
         <button
           onClick={() => { setInitError(null); window.location.reload() }}
-          className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white"
-          style={{ background: 'linear-gradient(135deg, #A855F7 0%, #EC4899 100%)' }}
+          className="px-6 py-2.5 rounded-xl text-sm font-semibold text-[#07110A] bg-[#66BB6A] hover:bg-[#81C784] transition-colors"
         >
           Retry
         </button>

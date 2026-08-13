@@ -2,25 +2,25 @@ import * as React from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, MapPin, Clock, AlertTriangle, Shield,
-  ExternalLink, ChevronRight, Loader2,
+  ExternalLink, ChevronRight, Loader2, ShieldCheck,
 } from 'lucide-react'
 import { incidentApi } from '@/services/api'
 import type { Incident } from '@/types'
 import { formatRelativeTime } from '@/lib/utils'
 
 const SEVERITY_CONFIG = {
-  low:      { color: '#22C55E', bg: 'rgba(34,197,94,0.12)',    label: 'Low Risk' },
-  medium:   { color: '#F59E0B', bg: 'rgba(245,158,11,0.12)',   label: 'Moderate Risk' },
-  high:     { color: '#EF4444', bg: 'rgba(239,68,68,0.12)',    label: 'High Risk' },
-  critical: { color: '#7C3AED', bg: 'rgba(124,58,237,0.12)',   label: 'Critical' },
+  low:      { color: '#66BB6A', bg: 'rgba(102,187,106,0.12)', label: 'Low Risk' },
+  medium:   { color: '#F5B942', bg: 'rgba(245,185,66,0.12)',  label: 'Moderate Risk' },
+  high:     { color: '#EF4444', bg: 'rgba(239,68,68,0.12)',   label: 'High Risk' },
+  critical: { color: '#EF4444', bg: 'rgba(239,68,68,0.18)',   label: 'Critical Danger' },
 }
 
 const SOURCE_LABELS: Record<string, string> = {
   user_reported: 'Community Report',
   official:      'Official Source',
-  news:          'News Report',
-  social_media:  'Social Media',
-  cctv:          'CCTV / Surveillance',
+  news:          'News Article',
+  social_media:  'Social Feed',
+  cctv:          'CCTV Surveillance',
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -32,9 +32,9 @@ const TYPE_LABELS: Record<string, string> = {
   suspicious:       'Suspicious Activity',
   traffic:          'Traffic Incident',
   natural_disaster: 'Natural Disaster',
-  fire:             'Fire',
+  fire:             'Fire Incident',
   medical:          'Medical Emergency',
-  other:            'Other',
+  other:            'Other Safety Concern',
 }
 
 export function IncidentDetailScreen() {
@@ -52,7 +52,6 @@ export function IncidentDetailScreen() {
     incidentApi.getIncident(id)
       .then((inc) => {
         setIncident(inc)
-        // Fetch nearby incidents
         return incidentApi.getIncidents({
           lat: inc.location.lat,
           lng: inc.location.lng,
@@ -69,24 +68,24 @@ export function IncidentDetailScreen() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-full gap-3">
-        <Loader2 className="h-8 w-8 text-[#A855F7] animate-spin" />
-        <p className="text-sm text-[#6B7280]">Loading incident details...</p>
+      <div className="flex flex-col items-center justify-center min-h-full gap-3 bg-[#07110A]">
+        <Loader2 className="h-8 w-8 text-[#66BB6A] animate-spin" />
+        <p className="text-xs text-[#9BAF9F]">Loading safety intelligence record...</p>
       </div>
     )
   }
 
   if (error || !incident) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-full gap-4 px-6">
+      <div className="flex flex-col items-center justify-center min-h-full gap-4 px-6 bg-[#07110A]">
         <AlertTriangle className="h-10 w-10 text-[#EF4444]" />
-        <p className="text-base font-semibold text-[#F9FAFB]">Incident not found</p>
-        <p className="text-sm text-[#6B7280] text-center">{error || 'This incident may have been removed.'}</p>
+        <p className="text-base font-bold text-[#F1F8F2]">Incident record unavailable</p>
+        <p className="text-xs text-[#9BAF9F] text-center">{error || 'This record may have been archived or removed.'}</p>
         <button
           onClick={() => navigate(-1)}
-          className="px-6 py-2.5 rounded-xl text-sm font-medium text-[#A855F7] border border-[#A855F7]/30 hover:bg-[#A855F7]/10 transition-colors"
+          className="px-6 py-2.5 rounded-xl text-xs font-bold text-[#07110A] bg-[#66BB6A]"
         >
-          Go Back
+          Return Back
         </button>
       </div>
     )
@@ -96,181 +95,124 @@ export function IncidentDetailScreen() {
   const reportedDate = new Date(incident.reportedAt)
 
   return (
-    <div className="min-h-full max-w-lg mx-auto animate-fade-in-up pb-safe">
+    <div className="min-h-full max-w-lg mx-auto animate-fade-in-up pb-safe bg-[#07110A]">
       {/* Header */}
-      <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-3 border-b border-[#1F2937]"
-        style={{ background: 'rgba(9,9,11,0.95)', backdropFilter: 'blur(12px)' }}>
+      <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-3 border-b border-[#1D3823] bg-[#07110A]">
         <button
           onClick={() => navigate(-1)}
-          className="p-2 rounded-lg hover:bg-[#1F2937] transition-colors text-[#6B7280]"
+          className="p-1.5 rounded-xl bg-[#0D1A10] border border-[#1D3823] text-[#8A948C] hover:text-[#F1F8F2]"
         >
-          <ArrowLeft className="h-5 w-5" />
+          <ArrowLeft className="h-4 w-4" />
         </button>
         <div>
-          <h1 className="text-base font-bold text-[#F9FAFB]">Incident Detail</h1>
-          <p className="text-xs text-[#6B7280]">#{id?.slice(0, 8)}</p>
+          <h1 className="text-sm font-bold text-[#F1F8F2]">Incident Details</h1>
+          <p className="text-[10px] text-[#8A948C]">ID: #{id?.slice(0, 8)}</p>
         </div>
       </div>
 
       <div className="px-4 py-5 space-y-4">
-        {/* Hero severity card */}
+        {/* Severity Banner */}
         <div
-          className="rounded-2xl p-5"
-          style={{ background: '#1A1A24', border: `1px solid ${sev.color}30` }}
+          className="rounded-2xl p-5 avana-surface"
+          style={{ border: `1px solid ${sev.color}40` }}
         >
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-2">
                 <span
-                  className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide"
+                  className="inline-flex items-center px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider"
                   style={{ background: sev.bg, color: sev.color }}
                 >
                   {sev.label}
                 </span>
                 {incident.isVerified && (
-                  <span
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold"
-                    style={{ background: 'rgba(34,197,94,0.12)', color: '#22C55E' }}
-                  >
-                    <Shield className="h-3 w-3" />
-                    Verified
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#122417] text-[#66BB6A] border border-[#1D3823]">
+                    <ShieldCheck className="h-3 w-3" />
+                    Verified Intelligence
                   </span>
                 )}
               </div>
-              <h2 className="text-xl font-bold text-[#F9FAFB] leading-snug">
+              <h2 className="text-lg font-extrabold text-[#F1F8F2] leading-snug">
                 {TYPE_LABELS[incident.type] || incident.type}
               </h2>
-              {incident.title && incident.title !== TYPE_LABELS[incident.type] && (
-                <p className="text-sm text-[#9CA3AF] mt-1">{incident.title}</p>
-              )}
             </div>
             <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
+              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
               style={{ background: sev.bg }}
             >
-              <AlertTriangle className="h-6 w-6" style={{ color: sev.color }} />
+              <AlertTriangle className="h-5 w-5" style={{ color: sev.color }} />
             </div>
           </div>
 
           {incident.description && (
-            <p className="mt-4 text-sm text-[#9CA3AF] leading-relaxed border-t border-[#1F2937] pt-4">
+            <p className="mt-4 text-xs text-[#9BAF9F] leading-relaxed border-t border-[#1D3823] pt-3">
               {incident.description}
             </p>
           )}
         </div>
 
-        {/* Metadata grid */}
+        {/* Intelligence Grid */}
         <div className="grid grid-cols-2 gap-3">
           <MetaCard
-            icon={<Clock className="h-4 w-4 text-[#A855F7]" />}
-            label="Reported"
+            icon={<Clock className="h-4 w-4 text-[#66BB6A]" />}
+            label="Timestamp"
             value={formatRelativeTime(incident.reportedAt)}
             sub={reportedDate.toLocaleDateString('en-IN', {
               day: 'numeric', month: 'short', year: 'numeric',
-              hour: '2-digit', minute: '2-digit',
             })}
           />
           <MetaCard
-            icon={<MapPin className="h-4 w-4 text-[#EC4899]" />}
-            label="Area"
-            value={incident.location.address || 'Location data'}
-            sub={incident.location.address ? `${incident.location.lat.toFixed(4)}, ${incident.location.lng.toFixed(4)}` : undefined}
+            icon={<MapPin className="h-4 w-4 text-[#66BB6A]" />}
+            label="Location"
+            value={incident.location.address || 'GPS Coordinates'}
+            sub={`${incident.location.lat.toFixed(4)}, ${incident.location.lng.toFixed(4)}`}
           />
           <MetaCard
             icon={<ExternalLink className="h-4 w-4 text-[#F59E0B]" />}
             label="Source"
             value={SOURCE_LABELS[incident.source] || incident.source}
-            sub={incident.status.replace(/_/g, ' ')}
+            sub={incident.status}
           />
           <MetaCard
-            icon={<Shield className="h-4 w-4 text-[#22C55E]" />}
+            icon={<Shield className="h-4 w-4 text-[#66BB6A]" />}
             label="Confidence"
             value={incident.isVerified ? 'High' : 'Unverified'}
-            sub={incident.isVerified ? 'Independently verified' : 'Community report'}
-            valueColor={incident.isVerified ? '#22C55E' : '#F59E0B'}
+            sub={incident.isVerified ? 'Verified record' : 'Community report'}
           />
         </div>
 
-        {/* View on map CTA */}
+        {/* View on Map CTA */}
         <button
           onClick={() => navigate('/map')}
-          className="w-full flex items-center justify-between px-4 py-4 rounded-2xl text-sm font-semibold transition-all"
-          style={{
-            background: 'rgba(168,85,247,0.1)',
-            border: '1px solid rgba(168,85,247,0.25)',
-            color: '#A855F7',
-          }}
+          className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-xs font-bold text-[#07110A] bg-[#66BB6A] hover:bg-[#81C784] transition-all"
         >
           <div className="flex items-center gap-2">
             <MapPin className="h-4 w-4" />
-            View on Safety Map
+            View Incident Location on Safety Map
           </div>
           <ChevronRight className="h-4 w-4" />
         </button>
-
-        {/* Nearby incidents */}
-        {nearby.length > 0 && (
-          <div
-            className="rounded-2xl overflow-hidden"
-            style={{ background: '#1A1A24', border: '1px solid #1F2937' }}
-          >
-            <div className="px-4 py-3 border-b border-[#1F2937]">
-              <h3 className="text-sm font-semibold text-[#F9FAFB]">Nearby Incidents</h3>
-              <p className="text-xs text-[#6B7280] mt-0.5">Within 1km of this location</p>
-            </div>
-            <div className="divide-y divide-[#1F2937]">
-              {nearby.map((inc) => {
-                const nearSev = SEVERITY_CONFIG[inc.severity as keyof typeof SEVERITY_CONFIG] || SEVERITY_CONFIG.medium
-                return (
-                  <button
-                    key={inc.id}
-                    onClick={() => navigate(`/incident/${inc.id}`)}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#1F2937] transition-colors text-left"
-                  >
-                    <div
-                      className="w-2 h-2 rounded-full shrink-0"
-                      style={{ background: nearSev.color, boxShadow: `0 0 6px ${nearSev.color}80` }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-[#F9FAFB] truncate">
-                        {TYPE_LABELS[inc.type] || inc.type}
-                      </p>
-                      <p className="text-xs text-[#6B7280]">{formatRelativeTime(inc.reportedAt)}</p>
-                    </div>
-                    <span
-                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0"
-                      style={{ background: nearSev.bg, color: nearSev.color }}
-                    >
-                      {nearSev.label}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )
 }
 
 function MetaCard({
-  icon, label, value, sub, valueColor,
+  icon, label, value, sub,
 }: {
   icon: React.ReactNode
   label: string
   value: string
   sub?: string
-  valueColor?: string
 }) {
   return (
-    <div className="rounded-xl p-3.5" style={{ background: '#111827', border: '1px solid #1F2937' }}>
-      <div className="flex items-center gap-1.5 mb-2">
+    <div className="rounded-xl p-3 bg-[#0D1A10] border border-[#1D3823]">
+      <div className="flex items-center gap-1.5 mb-1">
         {icon}
-        <span className="text-xs text-[#6B7280] font-medium">{label}</span>
+        <span className="text-[10px] text-[#8A948C] font-bold uppercase">{label}</span>
       </div>
-      <p className="text-sm font-bold text-[#F9FAFB] truncate" style={{ color: valueColor }}>{value}</p>
-      {sub && <p className="text-[10px] text-[#6B7280] mt-0.5 truncate">{sub}</p>}
+      <p className="text-xs font-bold text-[#F1F8F2] truncate">{value}</p>
+      {sub && <p className="text-[10px] text-[#9BAF9F] mt-0.5 truncate">{sub}</p>}
     </div>
   )
 }

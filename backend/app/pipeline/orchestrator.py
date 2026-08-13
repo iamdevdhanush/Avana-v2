@@ -50,7 +50,6 @@ class PipelineOrchestrator:
                 f"Unknown pipeline '{pipeline_name}'. "
                 f"Valid options: {sorted(_VALID_PIPELINES)}"
             )
-
         with Timer("2. ORCHESTRATOR.run()"):
             run_id = str(uuid.uuid4())
             start = time.time()

@@ -1,11 +1,12 @@
 import * as React from 'react'
 import {
-  Navigation, ArrowDown, Loader2, Shield, Zap, Scale, X, Info, MapPin,
+  Navigation, ArrowDown, Loader2, Shield, Zap, Scale, X, Info, MapPin, CheckCircle2,
 } from 'lucide-react'
 import { formatDistance, formatDuration } from '@/lib/utils'
 import { useRouteSafety } from '@/hooks/useRouteSafety'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { useLocationName } from '@/hooks/useLocationName'
+import { SearchDestination } from '@/components/map/SearchDestination'
 import type { RouteOption } from '@/types'
 
 interface RoutePanelProps {
@@ -16,97 +17,79 @@ const ROUTE_TYPES = [
   {
     value: 'safest' as const,
     icon: Shield,
-    label: 'Safest',
-    riskLabel: 'Low Risk',
-    color: '#22C55E',
-    bg: 'rgba(34,197,94,0.12)',
-    desc: 'Most protected path',
+    label: 'Safest Route',
+    riskLabel: 'LOWER RISK',
+    color: '#66BB6A',
+    bg: 'rgba(102,187,106,0.12)',
+    desc: 'Lowest incident density path',
   },
   {
     value: 'fastest' as const,
     icon: Zap,
-    label: 'Fastest',
-    riskLabel: 'Medium Risk',
-    color: '#F59E0B',
-    bg: 'rgba(245,158,11,0.12)',
-    desc: 'Quickest route',
+    label: 'Fastest Route',
+    riskLabel: 'MODERATE RISK',
+    color: '#F5B942',
+    bg: 'rgba(245,185,66,0.12)',
+    desc: 'Quickest estimated time',
   },
   {
     value: 'balanced' as const,
     icon: Scale,
-    label: 'Balanced',
-    riskLabel: 'Low-Medium Risk',
-    color: '#A855F7',
-    bg: 'rgba(168,85,247,0.12)',
-    desc: 'Time and safety',
+    label: 'Balanced Path',
+    riskLabel: 'BALANCED RISK',
+    color: '#A5D6A7',
+    bg: 'rgba(165,214,167,0.12)',
+    desc: 'Optimum safety & duration',
   },
 ]
 
-function getRiskLabel(score: number, category?: string): { label: string; color: string } {
-  if (category?.toLowerCase() === 'unknown') return { label: 'Unknown Risk', color: '#6B7280' }
-  if (score >= 0.8) return { label: 'Low Risk', color: '#22C55E' }
-  if (score >= 0.6) return { label: 'Medium-Low Risk', color: '#84CC16' }
-  if (score >= 0.4) return { label: 'Medium Risk', color: '#F59E0B' }
-  if (score >= 0.2) return { label: 'Elevated Risk', color: '#F97316' }
-  return { label: 'High Risk', color: '#EF4444' }
+function getRiskBadge(score: number, category?: string): { label: string; color: string } {
+  if (category?.toLowerCase() === 'unknown') return { label: 'UNKNOWN RISK', color: '#8A948C' }
+  if (score >= 0.8) return { label: 'LOWER RISK', color: '#66BB6A' }
+  if (score >= 0.6) return { label: 'MODERATE RISK', color: '#F5B942' }
+  if (score >= 0.4) return { label: 'ELEVATED RISK', color: '#F97316' }
+  return { label: 'HIGH RISK', color: '#EF4444' }
 }
 
-// Generate trust explanation from REAL backend data
 function getRouteTrustInfo(opt: RouteOption, type: 'safest' | 'fastest' | 'balanced'): string[] {
   const reasons: string[] = []
   const safetyPct = Math.round(opt.safetyScore)
 
   if (safetyPct > 0) {
-    reasons.push(`Safety score: ${safetyPct}/100 for this route`)
+    reasons.push(`Calculated route safety score: ${safetyPct}/100`)
   }
 
   if (opt.segments && opt.segments.length > 0) {
     const highRiskSegs = opt.segments.filter(s => s.riskLevel === 'high').length
     const medRiskSegs = opt.segments.filter(s => s.riskLevel === 'medium').length
     const lowRiskSegs = opt.segments.filter(s => s.riskLevel === 'low').length
-    if (highRiskSegs > 0) reasons.push(`Passes through ${highRiskSegs} elevated-risk segment${highRiskSegs > 1 ? 's' : ''}`)
-    if (medRiskSegs > 0) reasons.push(`Includes ${medRiskSegs} moderate-risk segment${medRiskSegs > 1 ? 's' : ''}`)
-    if (lowRiskSegs > 0) reasons.push(`${lowRiskSegs} low-risk segment${lowRiskSegs > 1 ? 's' : ''} on this path`)
-  }
-
-  if (reasons.length === 0) {
-    // Fallback when no segment data returned by backend
-    if (type === 'safest') reasons.push('Backend selected this as the safest calculated path')
-    else if (type === 'fastest') reasons.push('Backend selected this as the fastest calculated path')
-    else reasons.push('Backend balanced safety and time for this route')
+    if (highRiskSegs > 0) reasons.push(`Passes ${highRiskSegs} elevated-risk area${highRiskSegs > 1 ? 's' : ''}`)
+    if (medRiskSegs > 0) reasons.push(`Includes ${medRiskSegs} moderate risk segment${medRiskSegs > 1 ? 's' : ''}`)
+    if (lowRiskSegs > 0) reasons.push(`Covers ${lowRiskSegs} low risk segment${lowRiskSegs > 1 ? 's' : ''}`)
+  } else {
+    if (type === 'safest') reasons.push('Lower recent incident density along calculated path')
+    else if (type === 'fastest') reasons.push('Direct travel path prioritized for minimum travel time')
+    else reasons.push('Balanced travel duration with community safety coverage')
   }
 
   return reasons
 }
 
 export function RoutePanel({ onClose }: RoutePanelProps) {
-  const [from, setFrom] = React.useState('')
-  const [to, setTo] = React.useState('')
+  const [destination, setDestination] = React.useState<{ label: string; lat: number; lng: number } | null>(null)
   const [activeType, setActiveType] = React.useState<'safest' | 'fastest' | 'balanced'>('safest')
   const { position } = useGeolocation()
   const locationName = useLocationName(position.latitude, position.longitude)
   const { routeResult, selectedRoute, isLoading, error, calculateRoute, selectRoute, clearRoute } = useRouteSafety()
 
-  React.useEffect(() => {
+  const handleSelectDestination = (dest: { label: string; lat: number; lng: number }) => {
+    setDestination(dest)
     if (position.latitude && position.longitude) {
-      const name = locationName.displayName
-      const coordFallback = `${position.latitude.toFixed(4)}, ${position.longitude.toFixed(4)}`
-      if (name && name !== coordFallback) {
-        setFrom(name)
-      } else {
-        setFrom(coordFallback)
-      }
+      calculateRoute(
+        { lat: position.latitude, lng: position.longitude },
+        { lat: dest.lat, lng: dest.lng }
+      )
     }
-  }, [position.latitude, position.longitude, locationName.displayName])
-
-  const handleFindRoute = async () => {
-    if (!position.latitude || !position.longitude) return
-    const destMatch = to.match(/(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/)
-    if (!destMatch) return
-    await calculateRoute(
-      { lat: position.latitude, lng: position.longitude },
-      { lat: parseFloat(destMatch[1]), lng: parseFloat(destMatch[2]) },
-    )
   }
 
   const handleSelectRoute = (type: typeof activeType) => {
@@ -115,167 +98,138 @@ export function RoutePanel({ onClose }: RoutePanelProps) {
   }
 
   return (
-    <div
-      className="absolute top-16 left-3 z-[1000] w-80 rounded-2xl shadow-2xl overflow-hidden"
-      style={{ background: '#1A1A24', border: '1px solid #1F2937' }}
-    >
+    <div className="absolute top-4 left-4 z-[1000] w-84 rounded-2xl avana-surface shadow-2xl overflow-hidden border border-[#1D3823]">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#1F2937]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#1D3823] bg-[#07110A]">
         <div className="flex items-center gap-2">
-          <Navigation className="h-4 w-4 text-[#A855F7]" />
-          <span className="text-sm font-bold text-[#F9FAFB]">Safe Route</span>
+          <Navigation className="h-4 w-4 text-[#66BB6A]" />
+          <span className="text-xs font-bold text-[#F1F8F2] tracking-tight">SAFE ROUTE INTELLIGENCE</span>
         </div>
         {onClose && (
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-[#1F2937] transition-colors text-[#6B7280]"
+            className="p-1 rounded-lg hover:bg-[#122417] transition-colors text-[#8A948C]"
           >
             <X className="h-4 w-4" />
           </button>
         )}
       </div>
 
-      <div className="p-4 space-y-3">
-        {/* From / To inputs */}
+      <div className="p-3.5 space-y-3">
+        {/* Origin (Current location) */}
         <div className="space-y-2">
-          <div className="relative">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-[#22C55E] border-2 border-[#09090B]" />
-            <input
-              placeholder="From (your location)"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="w-full pl-8 pr-3 py-2.5 rounded-xl text-xs bg-[#111827] text-[#F9FAFB] placeholder:text-[#6B7280] outline-none border border-[#1F2937] focus:border-[#A855F7]/40 transition-colors"
-            />
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#122417] border border-[#1D3823]">
+            <span className="w-2 h-2 rounded-full bg-[#66BB6A] shrink-0" />
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] font-bold text-[#8A948C] uppercase block">Start Location</span>
+              <span className="text-xs text-[#F1F8F2] truncate block">
+                {locationName.displayName || 'Current Location (GPS Active)'}
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center justify-center">
-            <ArrowDown className="h-3.5 w-3.5 text-[#374151]" />
+          <div className="flex justify-center my-0.5">
+            <ArrowDown className="h-3.5 w-3.5 text-[#1D3823]" />
           </div>
 
-          <div className="relative">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-[#EF4444] border-2 border-[#09090B]" />
-            <input
-              placeholder="Destination (lat, lng)"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className="w-full pl-8 pr-3 py-2.5 rounded-xl text-xs bg-[#111827] text-[#F9FAFB] placeholder:text-[#6B7280] outline-none border border-[#1F2937] focus:border-[#A855F7]/40 transition-colors"
+          {/* Destination Search Component */}
+          <div>
+            <span className="text-[10px] font-bold text-[#8A948C] uppercase mb-1 block">Destination</span>
+            <SearchDestination
+              value={destination?.label || ''}
+              onSelectDestination={handleSelectDestination}
+              onClear={() => {
+                setDestination(null)
+                clearRoute()
+              }}
             />
           </div>
         </div>
 
-        {/* Find route button */}
-        {!routeResult && (
-          <button
-            onClick={handleFindRoute}
-            disabled={isLoading || !to}
-            className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            style={{
-              background: !to ? '#1F2937' : 'linear-gradient(135deg, #A855F7 0%, #9333EA 100%)',
-              boxShadow: to ? '0 4px 20px rgba(168,85,247,0.3)' : 'none',
-            }}
-          >
-            {isLoading ? (
-              <><Loader2 className="h-4 w-4 animate-spin" />Calculating...</>
-            ) : (
-              <><Navigation className="h-4 w-4" />Find Route</>
-            )}
-          </button>
+        {/* Loading state */}
+        {isLoading && (
+          <div className="flex items-center justify-center gap-2 py-4 text-xs text-[#9BAF9F]">
+            <Loader2 className="h-4 w-4 animate-spin text-[#66BB6A]" />
+            Analyzing safe routes...
+          </div>
         )}
 
-        {/* Error */}
+        {/* Error message */}
         {error && (
-          <div
-            className="px-3 py-2.5 rounded-xl text-xs"
-            style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#EF4444' }}
-          >
+          <div className="p-3 rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/20 text-xs text-[#EF4444]">
             {error}
           </div>
         )}
 
-        {/* Route results */}
-        {routeResult && (
-          <div className="space-y-3">
-            <div className="border-t border-[#1F2937] pt-3">
-              <p className="text-xs text-[#6B7280] font-semibold uppercase tracking-wide mb-2">Choose Route</p>
+        {/* Route options selection */}
+        {routeResult && !isLoading && (
+          <div className="space-y-3 pt-2 border-t border-[#1D3823]">
+            <p className="text-[10px] font-bold text-[#8A948C] uppercase tracking-wider">Calculated Options</p>
 
-              {/* Route option cards */}
-              {ROUTE_TYPES.map(({ value, icon: Icon, label, color, bg }) => {
-                const opt = routeResult[value]
-                const risk = getRiskLabel(opt.safetyScore)
-                const isSelected = activeType === value
-                return (
-                  <button
-                    key={value}
-                    onClick={() => handleSelectRoute(value)}
-                    className="w-full flex items-center gap-3 p-3 rounded-xl mb-2 text-left transition-all"
-                    style={{
-                      background: isSelected ? bg : '#111827',
-                      border: `1px solid ${isSelected ? color + '50' : '#1F2937'}`,
-                      transform: isSelected ? 'scale(1.01)' : 'scale(1)',
-                    }}
+            {ROUTE_TYPES.map(({ value, icon: Icon, label, color, bg }) => {
+              const opt = routeResult[value]
+              const risk = getRiskBadge(opt.safetyScore)
+              const isSelected = activeType === value
+              return (
+                <button
+                  key={value}
+                  onClick={() => handleSelectRoute(value)}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all"
+                  style={{
+                    background: isSelected ? bg : '#122417',
+                    border: `1px solid ${isSelected ? color : '#1D3823'}`,
+                  }}
+                >
+                  <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                    style={{ background: isSelected ? color : '#0D1A10', color: isSelected ? '#07110A' : color }}
                   >
-                    <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                      style={{ background: isSelected ? bg : 'rgba(31,41,55,0.8)', color }}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-[#F9FAFB]">{label}</span>
-                        <span className="text-xs font-bold" style={{ color: '#F9FAFB' }}>
-                          {formatDuration(opt.duration)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between mt-0.5">
-                        <span className="text-[10px] font-medium" style={{ color: risk.color }}>
-                          {risk.label}
-                        </span>
-                        <span className="text-[10px] text-[#6B7280]">{formatDistance(opt.distance)}</span>
-                      </div>
-                    </div>
-                    {value === 'safest' && (
-                      <span
-                        className="text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 uppercase"
-                        style={{ background: '#22C55E20', color: '#22C55E' }}
-                      >
-                        Best
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
+                    <Icon className="h-3.5 w-3.5" />
+                  </div>
 
-            {/* Why this route — real data */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#F1F8F2]">{label}</span>
+                      <span className="text-xs font-bold text-[#F1F8F2]">{formatDuration(opt.duration)}</span>
+                    </div>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <span className="text-[10px] font-extrabold" style={{ color: risk.color }}>
+                        {risk.label}
+                      </span>
+                      <span className="text-[10px] text-[#8A948C]">{formatDistance(opt.distance)}</span>
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+
+            {/* Why This Route Explanation Card */}
             {selectedRoute && (
-              <div
-                className="rounded-xl p-3"
-                style={{ background: '#111827', border: '1px solid #1F2937' }}
-              >
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Info className="h-3.5 w-3.5 text-[#A855F7]" />
-                  <p className="text-xs font-bold text-[#F9FAFB]">Why this route?</p>
-                  <span className="ml-auto text-[10px] text-[#4B5563]">Route Engine: OSRM</span>
+              <div className="p-3 rounded-xl bg-[#122417] border border-[#1D3823] space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <Info className="h-3.5 w-3.5 text-[#66BB6A]" />
+                  <span className="text-xs font-bold text-[#F1F8F2]">WHY THIS ROUTE?</span>
                 </div>
-                <ul className="space-y-1.5">
+                <ul className="space-y-1">
                   {getRouteTrustInfo(routeResult[activeType], activeType).map((reason, i) => (
-                    <li key={i} className="flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#A855F7] mt-1.5 shrink-0" />
-                      <span className="text-[11px] text-[#9CA3AF] leading-relaxed">{reason}</span>
+                    <li key={i} className="flex items-start gap-1.5 text-[11px] text-[#9BAF9F] leading-snug">
+                      <CheckCircle2 className="h-3 w-3 text-[#66BB6A] shrink-0 mt-0.5" />
+                      <span>{reason}</span>
                     </li>
                   ))}
                 </ul>
               </div>
             )}
 
-            {/* Clear */}
-            <button
-              onClick={clearRoute}
-              className="w-full py-2 rounded-xl text-xs font-semibold text-[#6B7280] hover:text-[#F9FAFB] hover:bg-[#1F2937] transition-all border border-[#1F2937]"
-            >
-              Clear Route
-            </button>
+            {/* Action buttons */}
+            <div className="flex gap-2">
+              <button
+                onClick={clearRoute}
+                className="flex-1 py-2 rounded-xl text-xs font-semibold text-[#8A948C] bg-[#07110A] border border-[#1D3823] hover:text-[#F1F8F2]"
+              >
+                Clear Route
+              </button>
+            </div>
           </div>
         )}
       </div>
