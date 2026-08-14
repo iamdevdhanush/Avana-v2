@@ -43,16 +43,20 @@ export function InstallBanner() {
     window.addEventListener('beforeinstallprompt', handler)
 
     const checkStandalone = () => {
-      if (window.matchMedia('(display-mode: standalone)').matches) {
+      if (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) {
         setIsVisible(false)
       }
     }
     checkStandalone()
-    window.matchMedia('(display-mode: standalone)').addEventListener('change', checkStandalone)
+    if (typeof window.matchMedia === 'function') {
+      window.matchMedia('(display-mode: standalone)').addEventListener('change', checkStandalone)
+    }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handler)
-      window.matchMedia('(display-mode: standalone)').removeEventListener('change', checkStandalone)
+      if (typeof window.matchMedia === 'function') {
+        window.matchMedia('(display-mode: standalone)').removeEventListener('change', checkStandalone)
+      }
     }
   }, [])
 
