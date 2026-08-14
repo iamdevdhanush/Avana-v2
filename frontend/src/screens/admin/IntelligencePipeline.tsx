@@ -21,7 +21,7 @@ const PIPELINE_META: Record<string, {
     description: 'Fetches RSS feeds, extracts incidents via AI, geocodes locations',
     icon: Newspaper,
     runnableName: 'intelligence',
-    color: '#A855F7',
+    color: '#66BB6A',
   },
   community: {
     label: 'Community Intelligence',
@@ -130,7 +130,7 @@ function RunResultCard({ result, onDismiss }: { result: PipelineRunResult; onDis
             <p className="text-[10px] text-[#6B7280]">Incidents Saved</p>
           </div>
           <div className="text-center">
-            <p className="text-lg font-black text-[#A855F7]">
+            <p className="text-lg font-black text-[#66BB6A]">
               {result.articlesProcessed ?? '—'}
             </p>
             <p className="text-[10px] text-[#6B7280]">Articles Processed</p>

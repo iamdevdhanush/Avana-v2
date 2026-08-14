@@ -16,7 +16,7 @@ import type { DashboardStats, DistrictAnalytics, CrimeTrend, LastIntelligenceRun
 import { SystemHealthBar } from '@/components/SystemHealthBar'
 import { DataFreshness } from '@/components/DataFreshness'
 
-const CHART_COLORS = ['#A855F7', '#EC4899', '#22C55E', '#F59E0B', '#EF4444', '#3B82F6']
+const CHART_COLORS = ['#66BB6A', '#EC4899', '#22C55E', '#F59E0B', '#EF4444', '#3B82F6']
 
 const TOOLTIP_STYLE = {
   contentStyle: {
@@ -109,7 +109,7 @@ export function AdminDashboard() {
       label: 'Reports Pending',
       value: stats?.activeIncidents ?? 0,
       icon: Activity,
-      color: '#A855F7',
+      color: '#66BB6A',
       bg: 'rgba(168,85,247,0.1)',
       border: 'rgba(168,85,247,0.2)',
     },
@@ -188,7 +188,7 @@ export function AdminDashboard() {
               onClick={() => navigate('/admin/pipeline')}
               className="px-3 py-2 rounded-xl text-xs font-semibold transition-all"
               style={{
-                background: 'linear-gradient(135deg, #A855F7 0%, #9333EA 100%)',
+                background: 'linear-gradient(135deg, #66BB6A 0%, #9333EA 100%)',
                 color: '#fff',
               }}
             >
@@ -237,7 +237,7 @@ export function AdminDashboard() {
             style={{ background: '#1A1A24', border: '1px solid #1F2937' }}
           >
             <div className="flex items-center gap-2 mb-4">
-              <BarChart3 className="h-4 w-4 text-[#A855F7]" />
+              <BarChart3 className="h-4 w-4 text-[#66BB6A]" />
               <h2 className="text-sm font-bold text-[#F9FAFB]">Incidents by District</h2>
             </div>
             <div className="h-[260px]">
@@ -309,7 +309,7 @@ export function AdminDashboard() {
           style={{ background: '#1A1A24', border: '1px solid #1F2937' }}
         >
           <div className="flex items-center gap-2 mb-4">
-            <TrendingUp className="h-4 w-4 text-[#A855F7]" />
+            <TrendingUp className="h-4 w-4 text-[#66BB6A]" />
             <h2 className="text-sm font-bold text-[#F9FAFB]">30-Day Incident Trend</h2>
           </div>
           <div className="h-[200px]">
@@ -318,8 +318,8 @@ export function AdminDashboard() {
                 <AreaChart data={trends}>
                   <defs>
                     <linearGradient id="purpleGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#A855F7" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#A855F7" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#66BB6A" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#66BB6A" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1F2937" vertical={false} />
@@ -337,7 +337,7 @@ export function AdminDashboard() {
                   <Area
                     type="monotone"
                     dataKey="count"
-                    stroke="#A855F7"
+                    stroke="#66BB6A"
                     strokeWidth={2}
                     fill="url(#purpleGrad)"
                   />
@@ -363,7 +363,7 @@ export function AdminDashboard() {
               </div>
               <button
                 onClick={() => navigate('/admin/incidents')}
-                className="flex items-center gap-1 text-xs text-[#A855F7] font-medium"
+                className="flex items-center gap-1 text-xs text-[#66BB6A] font-medium"
               >
                 View All <ChevronRight className="h-3 w-3" />
               </button>
@@ -414,7 +414,7 @@ export function AdminDashboard() {
             style={{ background: '#1A1A24', border: '1px solid rgba(168,85,247,0.2)' }}
           >
             <div className="flex items-center gap-2 mb-4">
-              <Bot className="h-4 w-4 text-[#A855F7]" />
+              <Bot className="h-4 w-4 text-[#66BB6A]" />
               <h2 className="text-sm font-bold text-[#F9FAFB]">Intelligence Pipeline</h2>
             </div>
 
@@ -422,7 +422,7 @@ export function AdminDashboard() {
               <div className="space-y-3">
                 <div className="grid grid-cols-3 gap-2">
                   <div className="rounded-xl px-3 py-2.5 text-center" style={{ background: '#111827' }}>
-                    <p className="text-xl font-black text-[#A855F7]">{lastIntelRun.incidentsSaved}</p>
+                    <p className="text-xl font-black text-[#66BB6A]">{lastIntelRun.incidentsSaved}</p>
                     <p className="text-[10px] text-[#6B7280]">Saved</p>
                   </div>
                   <div className="rounded-xl px-3 py-2.5 text-center" style={{ background: '#111827' }}>
@@ -441,7 +441,7 @@ export function AdminDashboard() {
                 <DataFreshness timestamp={lastIntelRun.ranAt} label="Last Run" warnAfterHours={24} />
                 <button
                   onClick={() => navigate('/admin/pipeline')}
-                  className="w-full py-2.5 rounded-xl text-xs font-bold text-[#A855F7] border border-[#A855F7]/30 hover:bg-[#A855F7]/10 transition-colors"
+                  className="w-full py-2.5 rounded-xl text-xs font-bold text-[#66BB6A] border border-[#66BB6A]/30 hover:bg-[#66BB6A]/10 transition-colors"
                 >
                   Manage Pipeline →
                 </button>
@@ -453,7 +453,7 @@ export function AdminDashboard() {
                 <p className="text-xs text-[#374151] mt-1">No pipeline runs recorded.</p>
                 <button
                   onClick={() => navigate('/admin/pipeline')}
-                  className="mt-3 px-4 py-2 rounded-xl text-xs font-semibold text-[#A855F7] border border-[#A855F7]/30"
+                  className="mt-3 px-4 py-2 rounded-xl text-xs font-semibold text-[#66BB6A] border border-[#66BB6A]/30"
                 >
                   Run Pipeline Now
                 </button>
